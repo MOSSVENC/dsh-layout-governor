@@ -188,10 +188,11 @@ An audit is worthless if it cannot go green. `npm test` builds the six incidents
 6. an aborted signal throws cleanly, and a symlinked directory is never followed out of the tree;
 7. a fenced rename table is read as history, while an unfenced stale claim still fails.
 
-`npm test` currently runs **50 tests: 48 pass, 2 skipped** (the two that compare
+`npm test` currently runs **78 tests: 76 pass, 2 skipped** (the two that compare
 the bundled YAML subset against the optional `yaml` package, which is not
-installed). Two of those files test the plugin halves themselves rather than the
-engine:
+installed). Coverage is 94.5 % of lines and 78.4 % of branches; the gaps and the
+rest of the review are in [`docs/quality.md`](docs/quality.md). Several files test
+the plugin halves themselves rather than the engine:
 
 - `test/host-module.test.mjs` drives the real `apply()` with a recording context,
   then calls the registered tool and the registered `/api` route against a dirty
@@ -200,23 +201,40 @@ engine:
 - `test/client-module.test.mjs` loads `lib/client.js` through
   `window.__ModuleLoader__` with a stub React and asserts the panel registers once
   into `sidebar.panellist`, resolves its label, ships matching `en`/`zh`
-  dictionaries, and renders a tree instead of throwing.
+  dictionaries, and renders every state instead of throwing;
+- `test/report-cache.test.mjs`, `test/host-root.test.mjs` and
+  `test/walk-observability.test.mjs` cover the three places where a wrong answer is
+  quiet: a stale report, the wrong root, and a directory that could not be read.
+
+`npm run check` runs the whole thing plus `scripts/check-code.mjs`, a mechanical
+review that fails on a file that does not parse, a runtime file over 600 lines, a
+console write outside the CLI, a harness import in the bundle, a rule module that
+lost its `{ id, defaults, run }` shape, or a statement that does not end the way
+every other statement in the package ends.
 
 Point 4 is the one that matters: if a plugin still reports red with its rules turned off, it is auditing its own constants instead of reality.
 
 ## Layout
 
 ```
-lib/index.js            Host: tool + report route
-lib/client.js           Client: the sidebar panel
-lib/engine/index.js     audit() / buildFixPlan() / formatReport()
-lib/engine/rules/*.js   one file per rule
-lib/engine/yaml-lite.js minimal YAML subset, used when `yaml` is absent
-bin/layout-governor.mjs the CLI
-layout.policy.yml       the studio policy this was written for
-layout.registry.yml     registered large files
-fixtures/build.mjs      programmatic incident fixtures (no binaries in git)
-test/                   node --test
+lib/index.js             Host wiring only: resolve, cache, register
+lib/host/audit-tool.js   the `layout_audit` tool definition
+lib/host/report-route.js the POST /api/layout-governor/report route
+lib/host/report-cache.js freshness window + in-flight de-duplication
+lib/host/root.js         which tree does "here" mean
+lib/client.js            Client: the sidebar panel (single file by loader design)
+lib/engine/index.js      audit() / buildFixPlan() / formatReport()
+lib/engine/rules/*.js    one file per rule, each `{ id, defaults, run }`
+lib/engine/walk.js       bounded-concurrency traversal
+lib/engine/yaml-lite.js  minimal YAML subset, used when `yaml` is absent
+bin/layout-governor.mjs  the CLI
+scripts/check-code.mjs   mechanical review, wired into npm run check
+layout.policy.yml        the studio policy this was written for
+layout.registry.yml      registered large files
+fixtures/build.mjs       programmatic incident fixtures (no binaries in git)
+test/                    node --test, 78 tests
+docs/policy.md           field-by-field policy reference
+docs/quality.md          the self-review: measurements, defects, accepted debt
 ```
 
 ## Why it is read-only
@@ -242,6 +260,15 @@ actually stops something.
   mentions a retired name in prose needs that name in `rules.docs.ignore` — the
   policy owns the vocabulary.
 - The fix plan is a suggestion generator. Applying it stays a human decision, which is the point.
+
+## Review
+
+[`docs/quality.md`](docs/quality.md) is the package's own review: the measured
+coverage, the twelve defects that review found in this code, what each fix is
+guarded by, and the debt that is still here. Two of those defects were wrong
+answers rather than untidy code — a missing root that reported `pass`, and an
+unreadable directory that was silently skipped — which is the only kind of defect
+worth writing a gate for.
 
 ## License
 

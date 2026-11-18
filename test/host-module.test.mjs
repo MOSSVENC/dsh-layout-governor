@@ -15,6 +15,7 @@ import path from 'node:path';
 import { after, test } from 'node:test';
 
 import { apply, inject, name } from '../lib/index.js';
+import { budgetText, RULE_IDS } from '../lib/host/audit-tool.js';
 
 const POLICY = `version: 1
 ignore: []
@@ -198,4 +199,53 @@ test('the tool refuses a root that does not exist', async () => {
     () => tools[0].execute({ root: '/definitely/not/a/directory' }, {}),
     /ENOENT|no such file|not a directory/i,
   );
+});
+
+test('a profile without a connection channel still registers the tool', () => {
+  const tools = [];
+  const ctx = {
+    tools: { register: (definition) => tools.push(definition) },
+    get: () => undefined,
+    effect: (run) => run(),
+    inject: (_dependencies, body) => body({ get: () => undefined, effect: (run) => run() }),
+  };
+  apply(ctx, {});
+  assert.equal(tools.length, 1, 'the audit tool does not depend on the web channel');
+});
+
+test('the row config sets the root and the cache lifetime', async () => {
+  const root = await dirtree();
+  const { tools } = harness({ root, cacheMs: 0 });
+  const tool = tools[0];
+
+  const first = await tool.execute({}, {});
+  const second = await tool.execute({}, {});
+
+  assert.equal(first.overall, 'fail', 'an empty root argument falls back to the row config');
+  assert.equal(second.overall, 'fail', 'cacheMs 0 forces a fresh scan, not a stale verdict');
+  assert.notEqual(first, second);
+});
+
+test('the model-facing text is budgeted at a line boundary', () => {
+  const short = 'line one\nline two';
+  assert.equal(budgetText(short, 1000), short);
+
+  const long = `${'x'.repeat(50)}\n`.repeat(40);
+  const cut = budgetText(long, 120);
+  assert.ok(cut.length < long.length);
+  assert.match(cut, /report truncated \(\d+ chars\)/);
+  assert.ok(!cut.includes('xxxxx…'), 'a cut never happens mid-line');
+  assert.ok(cut.split('\n')[0].length === 50, 'whole lines survive');
+});
+
+test('the advertised rule filter matches the engine registry', () => {
+  assert.deepEqual(RULE_IDS, [
+    'top-level',
+    'backups',
+    'duplicates',
+    'families',
+    'large-files',
+    'docs',
+    'protected',
+  ]);
 });

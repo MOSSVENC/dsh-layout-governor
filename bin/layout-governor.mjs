@@ -32,6 +32,70 @@ const FORMATS = new Map([
  */
 class UsageError extends Error {}
 
+/**
+ * Coerce a value into a positive integer, or reject the command line.
+ * @param {string} flag Flag name, for the message.
+ * @returns {(raw: string) => number} Parser.
+ */
+function positive(flag) {
+  return (raw) => {
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value <= 0) throw new UsageError(`${flag} must be a positive number`);
+    return Math.floor(value);
+  };
+}
+
+/**
+ * Split a comma-separated list, dropping blanks.
+ * @param {string} raw Raw value.
+ * @returns {string[]} Values.
+ */
+function list(raw) {
+  return String(raw)
+    .split(',')
+    .map((part) => part.trim())
+    .filter((part) => part !== '');
+}
+
+/**
+ * Map a format name onto the renderer's spelling.
+ * @param {string} raw Raw value.
+ * @returns {string} Canonical format.
+ */
+function parseFormat(raw) {
+  const format = FORMATS.get(String(raw).toLowerCase());
+  if (!format) throw new UsageError(`unknown --format: ${raw}`);
+  return format;
+}
+
+/**
+ * Flag table: adding a flag means adding one row, not another switch branch.
+ *
+ * `takesValue` is what makes `--flag=value` and `--flag value` behave the same;
+ * `append` is for flags that accumulate instead of overwriting.
+ */
+const FLAGS = new Map([
+  ['--root', { key: 'root', takesValue: true }],
+  ['--policy', { key: 'policy', takesValue: true }],
+  ['--registry', { key: 'registry', takesValue: true }],
+  ['--format', { key: 'format', takesValue: true, parse: parseFormat }],
+  ['--rule', { key: 'rules', takesValue: true, parse: list, append: true }],
+  ['--limit', { key: 'limit', takesValue: true, parse: positive('--limit') }],
+  ['--concurrency', { key: 'concurrency', takesValue: true, parse: positive('--concurrency') }],
+  ['--jobs', { key: 'jobs', takesValue: true, parse: positive('--jobs') }],
+  ['--all-off', { key: 'allOff', takesValue: false, parse: () => true }],
+  ['--fix-plan', { key: 'fixPlan', takesValue: false, parse: () => true }],
+  ['--check', { key: 'check', takesValue: false, parse: () => true }],
+  ['--version', { key: 'version', takesValue: false, parse: () => true }],
+  ['-h', { key: 'help', takesValue: false, parse: () => true }],
+  ['--help', { key: 'help', takesValue: false, parse: () => true }],
+]);
+
+/**
+ * Parse the command line.
+ * @param {string[]} argv Arguments without the node and script names.
+ * @returns {object} Parsed options.
+ */
 function parseArgs(argv) {
   const options = {
     root: process.cwd(),
@@ -49,83 +113,29 @@ function parseArgs(argv) {
     version: false,
   };
 
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i];
-    const eq = arg.startsWith('--') ? arg.indexOf('=') : -1;
-    const flag = eq === -1 ? arg : arg.slice(0, eq);
-    const inlineValue = eq === -1 ? undefined : arg.slice(eq + 1);
-
-    const take = () => {
-      if (inlineValue !== undefined) return inlineValue;
-      i += 1;
-      if (i >= argv.length) throw new UsageError(`missing value for ${flag}`);
-      return argv[i];
-    };
-
-    switch (flag) {
-      case '--root':
-        options.root = take();
-        break;
-      case '--policy':
-        options.policy = take();
-        break;
-      case '--registry':
-        options.registry = take();
-        break;
-      case '--format': {
-        const value = take();
-        const format = FORMATS.get(String(value).toLowerCase());
-        if (!format) throw new UsageError(`unknown --format: ${value}`);
-        options.format = format;
-        break;
-      }
-      case '--rule': {
-        const value = take();
-        for (const id of String(value).split(',').map((part) => part.trim())) {
-          if (id !== '') options.rules.push(id);
-        }
-        break;
-      }
-      case '--limit': {
-        const value = Number(take());
-        if (!Number.isFinite(value) || value <= 0) throw new UsageError('--limit must be a positive number');
-        options.limit = Math.floor(value);
-        break;
-      }
-      case '--concurrency': {
-        const value = Number(take());
-        if (!Number.isFinite(value) || value <= 0) {
-          throw new UsageError('--concurrency must be a positive number');
-        }
-        options.concurrency = Math.floor(value);
-        break;
-      }
-      case '--jobs': {
-        const value = Number(take());
-        if (!Number.isFinite(value) || value <= 0) throw new UsageError('--jobs must be a positive number');
-        options.jobs = Math.floor(value);
-        break;
-      }
-      case '--all-off':
-        options.allOff = true;
-        break;
-      case '--fix-plan':
-        options.fixPlan = true;
-        break;
-      case '--check':
-        options.check = true;
-        break;
-      case '--version':
-        options.version = true;
-        break;
-      case '-h':
-      case '--help':
-        options.help = true;
-        break;
-      default:
-        if (flag.startsWith('-')) throw new UsageError(`unknown option: ${flag}`);
-        throw new UsageError(`unexpected argument: ${arg}`);
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    const separator = arg.startsWith('--') ? arg.indexOf('=') : -1;
+    const flag = separator === -1 ? arg : arg.slice(0, separator);
+    const inline = separator === -1 ? undefined : arg.slice(separator + 1);
+    const spec = FLAGS.get(flag);
+    if (spec === undefined) {
+      throw new UsageError(flag.startsWith('-') ? `unknown option: ${flag}` : `unexpected argument: ${arg}`);
     }
+
+    let raw;
+    if (spec.takesValue === true) {
+      if (inline !== undefined) {
+        raw = inline;
+      } else {
+        index += 1;
+        if (index >= argv.length) throw new UsageError(`missing value for ${flag}`);
+        raw = argv[index];
+      }
+    }
+    const value = spec.parse === undefined ? raw : spec.parse(raw);
+    if (spec.append === true) options[spec.key].push(...(Array.isArray(value) ? value : [value]));
+    else options[spec.key] = value ?? true;
   }
 
   return options;

@@ -36,6 +36,7 @@
     "lib/client.js",
     "lib/engine/**/*.js",
     "bin/*.mjs",
+    "scripts/*.mjs",
     "cordis.patch.yml",
     "layout.policy.yml",
     "layout.registry.yml",
@@ -45,6 +46,8 @@
   ],
   "scripts": {
     "test": "node --test test/",
+    "coverage": "node --test --experimental-test-coverage test/",
+    "check": "node scripts/check-code.mjs && node --test test/",
     "audit": "node bin/layout-governor.mjs --root ../../.. --concurrency 16",
     "audit:check": "node bin/layout-governor.mjs --root ../../.. --concurrency 16 --check",
     "audit:off": "node bin/layout-governor.mjs --root ../../.. --all-off"
