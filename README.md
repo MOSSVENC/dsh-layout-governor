@@ -54,9 +54,15 @@ and only the third is a person:
    cold walk.
 2. **After every tool call that can write** (`write`, `edit`, `bash`, `pwsh`,
    `terminal`, a subagent, a worktree…) it arms one debounced re-scan. Twenty writes
-   in a burst cost one walk, three seconds after the last one, and two automatic
-   scans are never closer than 60 seconds — a busy session must not put a 122k-entry
-   walk on the disk every few seconds. The watcher is
+   in a burst cost one walk, three seconds after the last one.
+
+   An automatic scan is deliberately **bounded**: 6000 entries and depth 6, about
+   one second on this machine, growing or shrinking toward that target as it learns
+   the filesystem. It sees the top of the tree, where misplaced backups and stale
+   documentation live, and the panel says so. The unbounded, full-hash pass is what
+   `layout_audit` and `--check` do when you ask. A full walk of a 150k-entry DrvFs
+   tree is 35–55 s of pinned disk; making that automatic would be a defect, and it
+   was one until it was measured. The watcher is
    `tools/result`; it never inspects arguments, because "this tool may have written"
    is enough to justify looking again.
 3. **When you ask** — `layout_audit`, the sidebar panel, or the CLI. The panel also
@@ -216,7 +222,7 @@ An audit is worthless if it cannot go green. `npm test` builds the six incidents
 6. an aborted signal throws cleanly, and a symlinked directory is never followed out of the tree;
 7. a fenced rename table is read as history, while an unfenced stale claim still fails.
 
-`npm test` currently runs **97 tests: 95 pass, 2 skipped** (the two that compare
+`npm test` currently runs **104 tests: 102 pass, 2 skipped** (the two that compare
 the bundled YAML subset against the optional `yaml` package, which is not
 installed). Coverage is 94.5 % of lines and 78.4 % of branches; the gaps and the
 rest of the review are in [`docs/quality.md`](docs/quality.md). Several files test

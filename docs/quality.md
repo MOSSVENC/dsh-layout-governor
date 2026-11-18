@@ -76,6 +76,22 @@ Defects 14 and 15 were caught by reading a dry run before turning the feature on
 not by a test. That is worth recording: the cheap way to review an autonomous
 action is to make it print what it would do first.
 
+## Round 3 — it took the harness down, and why
+
+Reported symptom: with the plugin enabled, DSH was unusable and the log filled with
+errors; disabling it fixed both. Three independent causes, all mine.
+
+| # | Cause | Evidence | Fix |
+| --- | --- | --- | --- |
+| 17 | **Editing a link-installed plugin re-runs `apply` on every save**, and a second registration of `layout_audit` throws `tool "layout_audit" is already registered`. Module-level state resets on reload, so the old instance could not be found and never disposed. | `@deepseek-ai/dsh-tools` throws on duplicate names; the plugin was edited dozens of times while installed | teardown is held on `globalThis[Symbol.for(...)]`, so a reload disposes its predecessor; registration failures degrade to a warning instead of a broken row |
+| 18 | **An automatic scan cost as much as a deliberate one**: 35-55 s of a 150k-entry DrvFs tree, every minute, plus a 30 s cache that the panel polled through | measured: 53 s at 4-way concurrency, worse than 16-way | automatic scans walk a **bounded** slice (6k entries, depth 6: 1.1 s, stable across runs), the budget self-tunes toward one second, and the cache window is 5 minutes |
+| 19 | **Automatic deduplication read whole files**: 429 MB hashed per scan | `hashedBytes` in the report | two-stage hashing (64 KiB head + tail, then full), the pattern `fclones` and `czkawka` use; automatic scans only take stage one |
+| 20 | A `ReferenceError` inside the automatic path was swallowed by the surrounding `catch`, so the plugin looked alive while every automatic scan failed | the rescan test failed with "findings 1, expected 2" while no error surfaced | the budget is passed as an argument, not closed over; the failure is logged; `host-module.test.mjs` asserts a write actually changes what the next read returns |
+
+What this round taught: **an autonomous feature needs a cost budget as loud as its
+correctness**, and a plugin installed by symlink must assume it will be edited while
+running. Both were design omissions, not bugs in a corner case.
+
 ## What is still not good
 
 Stated plainly, because a review that finds nothing is a review that did not look.
