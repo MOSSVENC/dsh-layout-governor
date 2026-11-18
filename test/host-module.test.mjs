@@ -355,3 +355,42 @@ test('the disposers clean up the watcher and the boot timer', async () => {
   assert.ok(disposers.length > 0);
   for (const dispose of disposers) dispose();
 });
+
+test('a busy session does not rescan on every write', async () => {
+  const root = await dirtree();
+  const { tools, emitToolResult } = harness({
+    root,
+    autoScan: true,
+    bootDelayMs: 5_000,
+    watchDebounceMs: 2,
+    minRescanIntervalMs: 10_000,
+    cacheMs: 60_000,
+  });
+  const tool = tools[0];
+
+  const first = await tool.execute({ root }, {});
+  assert.equal(first.findings.length, 1);
+
+  // One write triggers a scan; further writes inside the floor must wait, not stack.
+  emitToolResult('write');
+  await delay(40);
+  const afterFirst = await tool.execute({ root }, {});
+  assert.equal(afterFirst.findings.length, 1);
+
+  const payload = Buffer.alloc(4096, 9);
+  await writeFile(path.join(root, 'writings', 'extra.wim'), payload);
+  await writeFile(path.join(root, 'mining', 'extra.wim'), payload);
+  await writeFile(path.join(root, 'extra-copy.wim'), payload);
+
+  emitToolResult('write');
+  emitToolResult('bash');
+  emitToolResult('edit');
+  await delay(60);
+
+  const throttled = await tool.execute({ root }, {});
+  assert.equal(
+    throttled.findings.length,
+    1,
+    'inside minRescanIntervalMs the trigger waits instead of walking again',
+  );
+});
