@@ -1,0 +1,42 @@
+{
+  "meta": {
+    "title": "目录治理",
+    "description": "按 layout.policy.yml 审计工作区目录：重复副本、备份放错位置、未登记的大文件、README 与盘面脱节、同一产物的版本族；只输出只读的修复方案，不动文件。"
+  },
+  "panel": {
+    "title": "目录",
+    "rescan": "重新扫描",
+    "scanning": "扫描中…",
+    "idle": "还没有扫描结果。",
+    "failed": "扫描失败",
+    "clean": "没有发现问题，盘面与策略一致。",
+    "overall": {
+      "fail": "需要处理",
+      "warn": "值得一看",
+      "pass": "合规"
+    },
+    "counts": {
+      "fail": "失败",
+      "warn": "警告",
+      "info": "提示"
+    },
+    "composition": "空间构成",
+    "class": {
+      "regenerable": "可再生",
+      "backup": "备份",
+      "protected": "保护",
+      "canonical": "正典",
+      "unknown": "其它"
+    },
+    "findings": "问题清单",
+    "suggestion": "建议",
+    "paths": "路径",
+    "footer": "只读扫描 · {files} 个文件 · {bytes} · {ms} ms",
+    "rules": "规则",
+    "off": "关",
+    "on": "开",
+    "showAll": "展开全部 {count} 条",
+    "showLess": "收起",
+    "fixPlanHint": "修复方案只生成不执行：在终端跑 layout-governor --fix-plan 查看。"
+  }
+}

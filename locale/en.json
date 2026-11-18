@@ -1,0 +1,42 @@
+{
+  "meta": {
+    "title": "Layout governor",
+    "description": "Audits a workspace tree against layout.policy.yml — duplicate payloads, misplaced backups, unregistered large files, README drift and version families — and prints a read-only fix plan."
+  },
+  "panel": {
+    "title": "Layout",
+    "rescan": "Scan again",
+    "scanning": "Scanning…",
+    "idle": "No scan yet.",
+    "failed": "Scan failed",
+    "clean": "No findings. The tree matches the policy.",
+    "overall": {
+      "fail": "Needs action",
+      "warn": "Worth a look",
+      "pass": "Compliant"
+    },
+    "counts": {
+      "fail": "fail",
+      "warn": "warn",
+      "info": "info"
+    },
+    "composition": "Space by class",
+    "class": {
+      "regenerable": "Regenerable",
+      "backup": "Backup",
+      "protected": "Protected",
+      "canonical": "Canonical",
+      "unknown": "Other"
+    },
+    "findings": "Findings",
+    "suggestion": "Suggestion",
+    "paths": "Paths",
+    "footer": "Read-only scan · {files} files · {bytes} · {ms} ms",
+    "rules": "Rules",
+    "off": "off",
+    "on": "on",
+    "showAll": "Show all {count}",
+    "showLess": "Show less",
+    "fixPlanHint": "The fix plan is generated, never executed: run layout-governor --fix-plan in a terminal."
+  }
+}

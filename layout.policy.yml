@@ -1,0 +1,139 @@
+# dsh-layout-governor policy — the studio workspace (/mnt/d/studio)
+#
+# Read by the audit engine. Every rule block may set `enabled` and `severity`;
+# a disabled rule must produce no findings at all (see test/negative-control).
+#
+# Adding a rule: create lib/engine/rules/<id>.js and append it to RULES in
+# lib/engine/index.js. Its defaults are merged under rules.<id> automatically.
+version: 1
+
+# Global ignores: never walked, never counted, never hashed.
+ignore:
+  - "**/node_modules/**"
+  - "**/.git/**"
+
+# How bytes are bucketed in the composition panel.
+classification:
+  regenerable:
+    - "**/.venv/**"
+    - "**/node_modules/**"
+    - "**/iso_tree/**"
+    - "**/_scratch/**"
+    - "_tools/py312/**"
+  protected:
+    - "writings/writer/**"
+    - "**/U218*"
+    - "**/7705047215923976320*"
+    - "_context/dsbot_archive_20261117/**"
+
+rules:
+  # The root is a map, not a scratch directory: a new top-level name is a
+  # decision, so it must be declared here first.
+  top-level:
+    enabled: true
+    severity: fail
+    allow:
+      - writings
+      - mining
+      - video
+      - game
+      - wool
+      - _projects
+      - _tools
+      - _context
+      - _references
+      - _archive
+      - _backup
+      - _rescue_20261117
+      - README.md
+      - HANDOFF.md
+      # The policy and the large-file registry are symlinked to the root so the
+      # governor finds them without configuration; they belong to the map.
+      - layout.policy.yml
+      - layout.registry.yml
+    allowPatterns:
+      - "*.lock"
+    ignore: []
+
+  # Exactly one home for backups: _archive/<YYYYMMDD>_<source>/
+  # Old in-place symlinks stay legal for one migration window, hence `warn`.
+  backups:
+    enabled: true
+    severity: fail
+    allowedRoots:
+      - _archive
+    allowedNamePattern: "^[0-9]{8}_[a-z0-9_-]+$"
+    forbidNames:
+      - "_backup"
+      - "_rescue_*"
+      - "*.bak.*"
+      - "*.bak"
+      - "backup_*"
+    legacySymlinks: warn
+    # Vendored third-party trees are not governed by this workspace's layout:
+    # whisper.cpp ships a `backup_rules.xml` that is Android config, not a backup.
+    ignore:
+      - "_tools/src/**"
+      - "_references/**"
+      - "_projects/**/upstream/**"
+      - "**/node_modules/**"
+
+  # install.wim existed three times; 100 MiB is low enough to catch real
+  # payloads and high enough to skip notes and thumbnails.
+  duplicates:
+    enabled: true
+    severity: fail
+    minBytes: 104857600
+    maxCopies: 1
+    ignore:
+      - "**/node_modules/**"
+
+  # One image directory may hold the original ISO plus the current build.
+  families:
+    enabled: true
+    severity: warn
+    groups:
+      - match: "**/*.iso"
+        maxPer: 2
+        groupBy: dir
+    # KVMANGER's upstream tests ship seven deliberately fake ISOs. Real payload
+    # directories are the subject of this rule; test fixtures are not.
+    ignore:
+      - "_projects/**/upstream/**"
+      - "_references/**"
+
+  # A 29 GB vhdx nobody wrote down is the incident this rule exists for.
+  large-files:
+    enabled: true
+    severity: fail
+    minBytes: 1073741824
+    registry: layout.registry.yml
+
+  # Renaming a directory without updating the map is how dead paths spread.
+  docs:
+    enabled: true
+    severity: fail
+    file: README.md
+    ignore:
+      # Legacy pointers kept during the migration window.
+      - "_rescue_*"
+      - "_backup"
+      # The hard-rules prose says "raw/ is immutable"; that is a rule about any
+      # raw directory, not a claim that the root has one.
+      - "raw"
+      # Retired names. The README mentions them only to say "read this as that";
+      # they are vocabulary for old documents, not live top-level entries.
+      - "quill"
+      - "miner"
+      - "lens"
+      - "anvil"
+
+  # These patterns guard the only surviving copies; zero matches is the alarm.
+  protected:
+    enabled: true
+    severity: warn
+    patterns:
+      - "writings/writer/**"
+      - "**/U218*"
+      - "**/7705047215923976320*"
+      - "_context/dsbot_archive_20261117/**"

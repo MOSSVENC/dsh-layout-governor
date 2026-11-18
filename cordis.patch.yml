@@ -1,0 +1,21 @@
+# Bundle patch layer.
+#
+# The row loads the package main entry as the host half (a plain Cordis plugin:
+# `export function apply(ctx, config)`). The `dsh.client` declaration in
+# package.json makes the web app load `./client` as the browser half, which
+# registers the sidebar panel.
+#
+# Every field below is optional; the shipped defaults read `layout.policy.yml`
+# from the plugin's configured root, which itself falls back to the session's
+# default working directory.
+#
+# To point the governor at a specific tree, override the row in the profile
+# patch (this file is not edited in place):
+#
+#   - override:
+#       - id: layout-governor
+#         config: { root: /mnt/d/studio }
+- insert:
+    - id: layout-governor
+      name: dsh-layout-governor
+      config: {}

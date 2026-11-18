@@ -1,0 +1,27 @@
+# dsh-layout-governor registry — files above rules['large-files'].minBytes must
+# be declared here, with a purpose and whether they may leave this drive.
+#
+# `path` is relative to the audit root and may be a glob. A declared entry with
+# nothing on disk is reported as `stale`; an undeclared large file is reported as
+# `unregistered`.
+#
+# Rebuildable environments are deliberately NOT listed one file at a time —
+# `_projects/cs2-vision/.venv` (≈14 GB) is excluded from the rule because it is a
+# classification.regenerable path: `uv sync` brings it back. It only shows up in
+# the composition totals.
+version: 1
+
+entries:
+  - path: "mining/worker/cs2-gpupv/vm/*.vhdx"
+    bytes: 30907826176
+    purpose: "Windows GPU-PV guest disk for the cs2-gpupv VM"
+    externalizable: true
+    protected: false
+    note: "move to the external drive and symlink back; never relocate while the VM is running"
+
+  - path: "mining/worker/cs2-gpupv/iso/*.iso"
+    bytes: 10372351992
+    purpose: "Windows 11 IoT Enterprise LTSC install media (stock + lite build)"
+    externalizable: true
+    protected: false
+    note: "the lite build is the only copy of that image; stock media can be re-downloaded"
