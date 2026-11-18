@@ -44,6 +44,32 @@ written. A rule that only ever fires is as useless as one that never fires; the
 rules are calibrated to catch the regression, and the tests below prove they still
 do.
 
+## It runs itself
+
+There is nothing to remember and nothing to type. The governor has three triggers,
+and only the third is a person:
+
+1. **On activation** it scans the default root, so the panel has something to draw
+   the first time it is opened and a session that asks the tool does not pay for a
+   cold walk.
+2. **After every tool call that can write** (`write`, `edit`, `bash`, `pwsh`,
+   `terminal`, a subagent, a worktree…) it arms one debounced re-scan. Twenty writes
+   in a burst cost one walk, three seconds after the last one. The watcher is
+   `tools/result`; it never inspects arguments, because "this tool may have written"
+   is enough to justify looking again.
+3. **When you ask** — `layout_audit`, the sidebar panel, or the CLI. The panel also
+   re-reads the Host cache every 15 seconds while it is visible, so it converges on
+   its own.
+
+With `autofix` enabled in the policy, a trigger-driven scan also performs the
+reversible half of the plan: misplaced backups move to
+`_archive/YYYYMMDD_<source>/`, with a `moves.jsonl` log and an `undo.sh` beside
+them. Deletions, document edits and registry entries stay human. See
+[`docs/policy.md`](docs/policy.md#autofix).
+
+Nothing above needs a flag. The flags exist for the CLI, where a flag is a normal
+thing to type.
+
 ## Why this exists
 
 A real 96 GB working tree drifted into these six states. Each one is a test fixture in this repository:
@@ -188,7 +214,7 @@ An audit is worthless if it cannot go green. `npm test` builds the six incidents
 6. an aborted signal throws cleanly, and a symlinked directory is never followed out of the tree;
 7. a fenced rename table is read as history, while an unfenced stale claim still fails.
 
-`npm test` currently runs **78 tests: 76 pass, 2 skipped** (the two that compare
+`npm test` currently runs **96 tests: 94 pass, 2 skipped** (the two that compare
 the bundled YAML subset against the optional `yaml` package, which is not
 installed). Coverage is 94.5 % of lines and 78.4 % of branches; the gaps and the
 rest of the review are in [`docs/quality.md`](docs/quality.md). Several files test

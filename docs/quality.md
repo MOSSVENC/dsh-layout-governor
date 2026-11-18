@@ -60,11 +60,28 @@ after    94.54 % lines   78.38 % branches   93.10 % functions
 | 11 | low | `panel.rules` and `panel.paths` were defined and never rendered | dead dictionary entries | `Rules` is now a real heading, `paths` removed | — |
 | 12 | low | `lib/client.js` had no test path at all: a bundle that cannot be imported by Node | 56 % line coverage | the factory is loaded through `window.__ModuleLoader__` with a stub React; helpers and presentational blocks are exported for it | 90 % line coverage on that file |
 
+## Round 2 — the defects the automatic layer exposed
+
+Adding self-triggering behaviour found three more, all of the dangerous kind: they
+produced a plausible answer that was wrong.
+
+| # | Severity | Defect | How it surfaced | Fix | Guard |
+| --- | --- | --- | --- | --- | --- |
+| 13 | high | Auditing a subtree without `--policy` enforced **nothing** and printed a green verdict | running the audit on `video/capture` by hand | policy discovery climbs from the root, so a subtree inherits the workspace policy the way `.git` is found | `no-policy.test.mjs` asserts inheritance and that an explicit path still wins |
+| 14 | high | The auto-fixer would have archived any unknown **top-level** directory — including one created minutes earlier by another process | the first dry run of autofix on a live workspace listed `_work` as an action | autofix only acts on findings from rules a policy names, default `[backups]` | `autofix.test.mjs` feeds it an invented `top-level` action and asserts it is refused |
+| 15 | medium | `backup_*` matched a maintenance script (`backup_panel_db.sh`), which would have been filed into the archive | same dry run | files must look like a copy (`.bak`, `*.bak.*`, `*~`, an archive extension); only directories are decided by name alone | `engine.test.mjs` asserts a script that performs backups is not a backup |
+| 16 | medium | A partial policy silently switched on every rule it did not mention, with defaults | a four-line policy reported findings from four other rules | rules are opt-in by declaration; what the file names is what runs | `no-policy.test.mjs` and `negative-control.test.mjs` |
+
+Defects 14 and 15 were caught by reading a dry run before turning the feature on,
+not by a test. That is worth recording: the cheap way to review an autonomous
+action is to make it print what it would do first.
+
 ## What is still not good
 
 Stated plainly, because a review that finds nothing is a review that did not look.
 
-- **`lib/client.js` is 594 lines in one file.** The Web loader hands a client
+- **`lib/client.js` is 625 lines in one file** (budget: 700, raised once when the
+  panel gained self-refresh). The Web loader hands a client
   bundle `require('react')` and nothing else, so there is no import table to split
   across files, and a build step to pre-bundle several sources is not available
   offline. It is kept navigable by structure (one style table, six components,

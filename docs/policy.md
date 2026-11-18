@@ -1,8 +1,15 @@
 # Policy reference
 
-Two files describe a tree. Both are optional; without them the governor runs with
-no rules enabled and reports `pass`, which is the correct answer to "is this tree
-compliant with a policy that does not exist?".
+Two files describe a tree. Finding them takes no flags: the search starts at the
+audit root and climbs, so auditing `studio/video` obeys `studio/layout.policy.yml`
+the way `.git` is found. An explicit `--policy` still wins.
+
+Without a policy anywhere above the tree, no rule runs and the report says so. That
+`pass` is not a verdict about the tree; it is the absence of one.
+
+A policy only enforces what it names: a four-line file that declares `duplicates`
+runs `duplicates` and nothing else. Declaring a rule without `enabled` turns it on;
+declaring it with `enabled: false` keeps it off.
 
 - `layout.policy.yml` — where things belong, and which of the seven rules are on.
 - `layout.registry.yml` — every large file that is allowed to stay, with a purpose.
@@ -167,6 +174,41 @@ A path that matches `regenerable` is a rebuildable environment or scratch output
 paths under an `allowedRoots` entry are `backup`. The panel colours the four
 classes and the CLI prints their byte totals, so "what is actually using the disk"
 has one answer.
+
+## autofix
+
+The one block that lets the governor act instead of report. Off unless a policy
+turns it on, and narrow by construction.
+
+```yaml
+autofix:
+  enabled: true
+  dryRun: false            # true keeps the plan a proposal
+  kinds: [move-to-archive] # the only kind that can ever be applied
+  rules: [backups]         # the only findings that can be acted on
+  maxPerRun: 20
+```
+
+| field | default | meaning |
+|---|---|---|
+| `enabled` | `false` | nothing is applied unless this is `true` |
+| `dryRun` | `true` | when true, the plan is computed and reported but nothing moves |
+| `kinds` | `[move-to-archive]` | filtered to that value; `delete`, `edit-doc` and `register` are never automatic |
+| `rules` | `[backups]` | only findings from these rules are eligible |
+| `maxPerRun` | `20` | bound on one pass |
+
+`rules` exists because "reversible" is not the same as "correct". The `top-level`
+rule flags any first-level name the policy does not list, and a directory someone
+created five minutes ago is exactly that — archiving it automatically would be data
+loss dressed up as tidiness. Only a finding that says *this backup is in the wrong
+place* is safe to act on unattended.
+
+Each pass moves with `rename(2)` (which refuses to clobber an existing name), skips
+every path the policy marks protected, skips anything already inside the archive
+root, and leaves two files beside the moves:
+
+- `_archive/<YYYYMMDD>_layout-governor/moves.jsonl` — one line per move;
+- `_archive/<YYYYMMDD>_layout-governor/undo.sh` — the exact reverse, one `mv -n` per move.
 
 ## layout.registry.yml
 

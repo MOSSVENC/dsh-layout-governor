@@ -70,6 +70,8 @@ async function dirtree() {
 function harness(config = {}) {
   const tools = [];
   const routes = [];
+  const listeners = [];
+  const disposers = [];
   const ctx = {
     tools: {
       register(definition) {
@@ -81,8 +83,15 @@ function harness(config = {}) {
       return undefined;
     },
     effect(run) {
-      return run();
+      const dispose = run();
+      if (typeof dispose === 'function') disposers.push(dispose);
+      return dispose;
     },
+    on(name, handler) {
+      listeners.push({ name, handler });
+      return () => {};
+    },
+    logger: { info() {}, warn() {} },
     inject(dependencies, body) {
       assert.deepEqual(dependencies, ['connection']);
       body({
@@ -102,8 +111,20 @@ function harness(config = {}) {
       });
     },
   };
-  apply(ctx, config);
-  return { ctx, tools, routes };
+  // Automatic behaviour is opt-in for the default harness: a background scan in
+  // every wiring test would make them slow and order-dependent. The tests that
+  // want it pass `autoScan: true` and a tiny delay.
+  apply(ctx, { autoScan: false, ...config });
+  /**
+   * Deliver one finished tool call to every registered listener.
+   * @param {string} toolName Tool name.
+   */
+  const emitToolResult = (toolName) => {
+    for (const entry of listeners) {
+      if (entry.name === 'tools/result') entry.handler({ name: toolName }, { isError: false });
+    }
+  };
+  return { ctx, tools, routes, listeners, disposers, emitToolResult };
 }
 
 test('the host exposes one tool and one route', () => {
@@ -248,4 +269,89 @@ test('the advertised rule filter matches the engine registry', () => {
     'docs',
     'protected',
   ]);
+});
+
+/**
+ * Wait for background work to settle.
+ * @param {number} ms Milliseconds.
+ * @returns {Promise<void>}
+ */
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+test('a finished write triggers a background rescan', async () => {
+  const root = await dirtree();
+  // autoScan on (so the watcher is installed), but the activation scan parked far
+  // enough away that only the tool result can explain a refresh.
+  const { tools, emitToolResult } = harness({
+    root,
+    autoScan: true,
+    bootDelayMs: 5_000,
+    watchDebounceMs: 5,
+    cacheMs: 60_000,
+  });
+  const tool = tools[0];
+
+  const before = await tool.execute({ root }, {});
+  assert.equal(before.findings.length, 1);
+
+  // A second identical trio appears on disk.
+  const payload = Buffer.alloc(4096, 9);
+  await writeFile(path.join(root, 'writings', 'second.wim'), payload);
+  await writeFile(path.join(root, 'mining', 'second.wim'), payload);
+  await writeFile(path.join(root, 'second-copy.wim'), payload);
+
+  // Nothing has noticed yet: the report is cached and correct as of its own time.
+  const stale = await tool.execute({ root }, {});
+  assert.equal(stale.findings.length, 1, 'without a trigger the cached report stands');
+
+  emitToolResult('write');
+  await delay(80);
+
+  const fresh = await tool.execute({ root }, {});
+  assert.equal(fresh.findings.length, 2, 'the write armed one debounced rescan');
+});
+
+test('a read-only tool does not trigger a rescan', async () => {
+  const root = await dirtree();
+  const { tools, emitToolResult } = harness({ root, watchDebounceMs: 5, cacheMs: 60_000 });
+  const tool = tools[0];
+  await tool.execute({ root }, {});
+
+  const payload = Buffer.alloc(4096, 9);
+  await writeFile(path.join(root, 'writings', 'second.wim'), payload);
+  await writeFile(path.join(root, 'mining', 'second.wim'), payload);
+  await writeFile(path.join(root, 'second-copy.wim'), payload);
+
+  emitToolResult('read');
+  emitToolResult('layout_audit');
+  await delay(80);
+
+  const still = await tool.execute({ root }, {});
+  assert.equal(still.findings.length, 1, 'reading the tree does not change it');
+});
+
+test('activation scans before anyone asks', async () => {
+  const root = await dirtree();
+  const { tools } = harness({ root, autoScan: true, bootDelayMs: 5, cacheMs: 60_000 });
+  await delay(80);
+
+  // Disabling every rule would change the verdict — if the next call re-scanned.
+  await writeFile(
+    path.join(root, 'layout.policy.yml'),
+    POLICY.replace("duplicates:\n    enabled: true", "duplicates:\n    enabled: false"),
+  );
+
+  const cached = await tools[0].execute({ root }, {});
+  assert.equal(cached.findings.length, 1, 'the activation scan filled the cache first');
+
+  const forced = await tools[0].execute({ root, force: true }, {});
+  assert.equal(forced.findings.length, 0, 'a forced scan sees the new policy, proving the difference');
+});
+
+test('the disposers clean up the watcher and the boot timer', async () => {
+  const root = await dirtree();
+  const { disposers } = harness({ root, autoScan: true, bootDelayMs: 5 });
+  await delay(30);
+  assert.ok(disposers.length > 0);
+  for (const dispose of disposers) dispose();
 });

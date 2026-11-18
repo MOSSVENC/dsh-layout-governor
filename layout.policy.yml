@@ -26,6 +26,21 @@ classification:
     - "**/7705047215923976320*"
     - "_context/dsbot_archive_20261117/**"
 
+# Self-healing: the plugin runs on its own (on activation, and again a few seconds
+# after any tool call that could write). When enabled, the reversible half of the
+# plan is applied automatically: misplaced backups are moved into
+# _archive/YYYYMMDD_<source>/ with `mv -n`, logged to moves.jsonl, and paired with an
+# undo.sh that puts everything back. `delete`, document edits and registry entries are
+# never automatic, and a protected path is never touched.
+autofix:
+  enabled: true
+  dryRun: false       # set true to keep the plan as a proposal only
+  kinds: [move-to-archive]
+  # Only findings about backup placement. A new top-level directory is flagged by
+  # the top-level rule, and that is a human decision, not a self-healing one.
+  rules: [backups]
+  maxPerRun: 20
+
 rules:
   # The root is a map, not a scratch directory: a new top-level name is a
   # decision, so it must be declared here first.

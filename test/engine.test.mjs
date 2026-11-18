@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -183,4 +183,31 @@ test('formatReport renders json, text and markdown', async (t) => {
 
   assert.equal(formatReport(report, 'md'), markdown);
   assert.equal(formatReport(report, 'text'), formatReport(report));
+});
+
+test('a script that performs backups is not a backup', async (t) => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'lg-names-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  await mkdir(path.join(dir, 'wool', 'harvest'), { recursive: true });
+  await mkdir(path.join(dir, 'mining', '_backup'), { recursive: true });
+  await writeFile(path.join(dir, 'wool', 'harvest', 'backup_panel_db.sh'), '#!/bin/sh\n', 'utf8');
+  await writeFile(path.join(dir, 'wool', 'harvest', 'notes.md.bak.20261118'), 'old', 'utf8');
+  await writeFile(path.join(dir, 'mining', 'love.bak'), 'old', 'utf8');
+  await writeFile(path.join(dir, '_archive', 'keep.tar.gz'), 'x', 'utf8').catch(async () => {
+    await mkdir(path.join(dir, '_archive'), { recursive: true });
+    await writeFile(path.join(dir, '_archive', 'keep.tar.gz'), 'x', 'utf8');
+  });
+  await writeFile(
+    path.join(dir, 'layout.policy.yml'),
+    'version: 1\nrules:\n  backups:\n    enabled: true\n    severity: fail\n    allowedRoots: [_archive]\n    forbidNames: ["_backup", "*.bak.*", "*.bak", "backup_*"]\n',
+    'utf8',
+  );
+
+  const report = await audit({ root: dir });
+  const flagged = report.findings.map((finding) => path.basename(finding.paths[0])).sort();
+
+  assert.ok(!flagged.includes('backup_panel_db.sh'), 'a maintenance script is not a backup');
+  assert.ok(flagged.includes('notes.md.bak.20261118'), 'a stamped copy is a backup');
+  assert.ok(flagged.includes('love.bak'), 'a .bak file is a backup');
+  assert.ok(flagged.includes('_backup'), 'a directory of backups is a backup');
 });
