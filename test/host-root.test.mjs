@@ -63,3 +63,28 @@ test('typedField only accepts the declared primitive', () => {
   assert.equal(typedField(config, 'missing', 'string'), undefined);
   assert.equal(typedField(undefined, 'text', 'string'), undefined);
 });
+
+test('a tool call uses its session directory, not the host default', () => {
+  const ctx = {
+    get(name) {
+      if (name === 'workingDirectory') {
+        return { defaultDirectory: '/host/home', get: (session) => (session === 's1' ? '/mnt/d/studio' : undefined) };
+      }
+      if (name === 'workspaceRegistry') {
+        return { list: () => [{ path: '/from/registry' }] };
+      }
+      return undefined;
+    },
+  };
+  // The session wins over the open workspace and over the host's default home.
+  assert.equal(resolveRoot(ctx, {}, undefined, 's1'), path.resolve('/mnt/d/studio'));
+  // An unknown session falls through to the workspace list.
+  assert.equal(resolveRoot(ctx, {}, undefined, 'other'), path.resolve('/from/registry'));
+  // No session at all (the HTTP route) also uses the open workspace.
+  assert.equal(resolveRoot(ctx, {}, undefined), path.resolve('/from/registry'));
+});
+
+test('a host with no workspace list falls back to its default directory', () => {
+  const ctx = { get: () => ({ defaultDirectory: '/host/home' }) };
+  assert.equal(resolveRoot(ctx, {}, undefined), path.resolve('/host/home'));
+});
