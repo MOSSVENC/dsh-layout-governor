@@ -291,3 +291,90 @@ test('X: a plan action carries the protected paths it was derived from', async (
   assert.ok(review !== undefined);
   assert.ok(Array.isArray(review.protectedPaths) && review.protectedPaths.length > 0);
 });
+
+test('X: the selector guard is what stops a top-level move, not fixable:false', async () => {
+  // The decisive fixture: the finding itself is `fixable: true` and the policy
+  // permits moving top-level entries, so only the selector's protected-subtree
+  // check can stop the move. On the pre-fix build this moved `x` into `_archive`.
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'lg-x2-'));
+  created.push(dir);
+  const root = path.join(dir, 'root');
+  await mkdir(path.join(root, 'x'), { recursive: true });
+  await writeFile(path.join(root, 'x', 'U218_master.mp4'), 'irreplaceable');
+  await mkdir(path.join(root, 'scratch'), { recursive: true });
+  await writeFile(path.join(root, 'scratch', 'notes.txt'), 'nothing precious');
+  await writeFile(
+    path.join(root, 'layout.policy.yml'),
+    [
+      'version: 1',
+      'autofix:',
+      '  enabled: true',
+      '  dryRun: false',
+      '  rules: [top-level]',      // a policy that allows archiving unknown top-level names
+      'classification:',
+      '  protected: ["**/U218*"]',
+      'rules:',
+      '  top-level:',
+      '    enabled: true',
+      '    allow: [scratch, layout.policy.yml]',
+      '  protected:',
+      '    enabled: true',
+      '    patterns: ["**/U218*"]',
+      '',
+    ].join('\n'),
+  );
+
+  const report = await audit({ root });
+  const chosen = selectAutoActions(report, report.autofix, buildFixPlan(report).actions);
+  const sources = chosen.map((action) => action.paths[0]);
+
+  assert.ok(
+    !sources.includes(path.join(root, 'x')),
+    'the directory holding the original is not selected',
+  );
+  assert.ok(
+    sources.includes(path.join(root, 'scratch')) === false ||
+      sources.every((item) => !item.endsWith('_backup')),
+    'the selector still works on ordinary candidates',
+  );
+
+  const outcome = await applyAutoActions(report, {
+    actions: buildFixPlan(report).actions,
+    now: '2026-11-19T00:00:00.000Z',
+  });
+  assert.deepEqual(outcome.moved, [], 'nothing moves');
+  assert.equal((await stat(path.join(root, 'x', 'U218_master.mp4'))).isFile(), true);
+});
+
+test('X: the same policy does move a directory with nothing protected inside', async () => {
+  // The control: without this the previous test would pass on a selector that
+  // simply refuses everything, which is the failure mode I would otherwise ship.
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'lg-x3-'));
+  created.push(dir);
+  const root = path.join(dir, 'root');
+  await mkdir(path.join(root, 'ordinary'), { recursive: true });
+  await writeFile(path.join(root, 'ordinary', 'notes.txt'), 'nothing precious');
+  await writeFile(
+    path.join(root, 'layout.policy.yml'),
+    [
+      'version: 1',
+      'autofix:',
+      '  enabled: true',
+      '  dryRun: false',
+      '  rules: [top-level]',
+      'rules:',
+      '  top-level:',
+      '    enabled: true',
+      '    allow: [layout.policy.yml]',
+      '',
+    ].join('\n'),
+  );
+
+  const report = await audit({ root });
+  const chosen = selectAutoActions(report, report.autofix, buildFixPlan(report).actions);
+  assert.deepEqual(
+    chosen.map((action) => action.paths[0]),
+    [path.join(root, 'ordinary')],
+    'an unprotected unknown directory is still a candidate',
+  );
+});
