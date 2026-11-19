@@ -194,3 +194,42 @@ test('M3: run history is pruned instead of growing forever', async () => {
   const report = await audit({ root, storePath: store, limits: { maxRuns: 2 } });
   assert.ok(report.index.runs <= 2, `history kept ${report.index.runs} runs`);
 });
+
+test('V1b: an index missing whole tables is repaired, not merely column-patched', async () => {
+  // The real failure: the workspace shipped a schema=1 index written before the
+  // code tables existed. Migration ran before CREATE, so ALTER TABLE imports died
+  // with "no such table: imports" and every query failed from then on.
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'lg-legacy-'));
+  created.push(dir);
+  const root = path.join(dir, 'tree');
+  await mkdir(path.join(root, 'src'), { recursive: true });
+  await writeFile(path.join(root, 'src', 'a.js'), 'function alpha() {}\n');
+  await writeFile(path.join(root, 'layout.policy.yml'), 'version: 1\nrules: {}\n');
+  const store = path.join(dir, 'old.db');
+
+  const { DatabaseSync } = await import('node:sqlite');
+  const legacy = new DatabaseSync(store);
+  legacy.exec('CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
+  legacy.exec("INSERT INTO meta VALUES ('schema','1')");
+  legacy.exec(
+    'CREATE TABLE files (path TEXT PRIMARY KEY, kind TEXT NOT NULL, size INTEGER NOT NULL, ' +
+      'mtime INTEGER NOT NULL, hash TEXT, hash_mode TEXT, class TEXT, ' +
+      'protected INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL)',
+  );
+  legacy.close();
+
+  const report = await audit({ root, storePath: store });
+  assert.equal(report.index?.error, undefined, 'the index is repaired rather than failing');
+  assert.ok(report.index.symbols >= 1, 'the symbol table now exists and is filled');
+
+  const repaired = new DatabaseSync(store);
+  assert.equal(repaired.prepare("SELECT value FROM meta WHERE key='schema'").get().value, '2');
+  const tables = repaired
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+    .all()
+    .map((row) => row.name);
+  for (const required of ['files', 'imports', 'symbols', 'code_files', 'runs', 'findings']) {
+    assert.ok(tables.includes(required), `${required} was created`);
+  }
+  repaired.close();
+});
