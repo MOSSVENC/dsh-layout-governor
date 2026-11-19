@@ -14,11 +14,11 @@ import { audit, buildFixPlan, formatReport } from '../lib/engine/index.js';
 const USAGE = `usage: layout-governor [--root DIR] [--policy FILE] [--registry FILE]
                        [--format json|text|md] [--fix-plan] [--check]
                        [--rule ID ...] [--all-off] [--limit N]
-                       [--concurrency N] [--jobs N]
+                       [--concurrency N] [--jobs N] [--db FILE]
 
   --concurrency N  filesystem operations in flight; bounds BOTH directory
                    traversal and large-file hashing. Defaults: walk 16, hash 4.
-  --jobs N         large-file hashing only; overrides --concurrency for hashing.
+  --db FILE        write and reuse the SQLite index at FILE (off by default).
   --limit N        hard cap on walked entries (sets stats.truncated when hit).`;
 
 const FORMATS = new Map([
@@ -79,6 +79,7 @@ const FLAGS = new Map([
   ['--root', { key: 'root', takesValue: true }],
   ['--policy', { key: 'policy', takesValue: true }],
   ['--registry', { key: 'registry', takesValue: true }],
+  ['--db', { key: 'db', takesValue: true }],
   ['--format', { key: 'format', takesValue: true, parse: parseFormat }],
   ['--rule', { key: 'rules', takesValue: true, parse: list, append: true }],
   ['--limit', { key: 'limit', takesValue: true, parse: positive('--limit') }],
@@ -102,6 +103,7 @@ function parseArgs(argv) {
     root: process.cwd(),
     policy: null,
     registry: null,
+    db: null,
     format: 'text',
     fixPlan: false,
     check: false,
@@ -164,6 +166,7 @@ async function main(argv) {
   const auditOptions = { root };
   if (options.policy) auditOptions.policyPath = path.resolve(options.policy);
   if (options.registry) auditOptions.registryPath = path.resolve(options.registry);
+  if (options.db) auditOptions.storePath = path.resolve(options.db);
   if (options.rules.length > 0) auditOptions.onlyRules = options.rules;
   if (options.allOff) auditOptions.allRulesOff = true;
   const limits = {};
