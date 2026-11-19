@@ -18,7 +18,7 @@ import { formatReport } from '../lib/engine/format.js';
 function report(overrides = {}) {
   return {
     engine: 'dsh-layout-governor',
-    engineVersion: '0.1.0',
+    engineVersion: '0.2.0',
     generatedAt: '2026-11-18T00:00:00.000Z',
     root: '/tmp/tree',
     policy: { path: '/tmp/tree/layout.policy.yml', sha256: 'abcdef0123456789', version: 1, present: true },

@@ -1,6 +1,6 @@
 {
   "name": "dsh-layout-governor",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Audits a workspace directory tree against a policy file: duplicate payloads, misplaced backups, unregistered large files, README-vs-disk drift and version families. Read-only by design: it reports and prints a fix plan instead of touching files.",
   "icon": "icon.svg",
   "author": "MOSSVENC",

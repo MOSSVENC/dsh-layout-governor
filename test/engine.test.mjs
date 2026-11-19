@@ -29,7 +29,7 @@ test('clean fixture is all green', async (t) => {
   assert.equal(report.stats.truncated, false);
 
   assert.equal(report.engine, 'dsh-layout-governor');
-  assert.equal(report.engineVersion, '0.1.0');
+  assert.equal(report.engineVersion, '0.2.0');
   assert.equal(report.root, fixture.root);
   assert.match(report.generatedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
   assert.equal(report.policy.path, fixture.policyPath);
