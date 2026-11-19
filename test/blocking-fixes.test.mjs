@@ -231,3 +231,63 @@ test('B6: the shipped policy never enables moving files', async () => {
   assert.equal(parsed.autofix.dryRun, true);
   assert.equal((await stat(new URL('../layout.policy.yml', import.meta.url))).isFile(), true);
 });
+
+test('X: a top-level directory holding a U218 original is refused by the selector', async () => {
+  // The audit's own case: the protected file is nested in a directory the backups
+  // rule names, and the pattern is a basename glob (`**/U218*`), which no path
+  // prefix can decide. The report has to carry the paths that actually matched.
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'lg-x-'));
+  created.push(dir);
+  const root = path.join(dir, 'tree');
+  await mkdir(path.join(root, 'video', '_backup'), { recursive: true });
+  await writeFile(path.join(root, 'video', '_backup', 'U218_master.mp4'), 'irreplaceable');
+  await writeFile(path.join(root, 'video', '_backup', 'plan.txt'), 'recoverable');
+  await writeFile(
+    path.join(root, 'layout.policy.yml'),
+    [
+      'version: 1',
+      'autofix:',
+      '  enabled: true',
+      '  dryRun: false',
+      '  rules: [backups]',
+      'classification:',
+      '  protected: ["**/U218*"]',
+      'rules:',
+      '  backups:',
+      '    enabled: true',
+      '    allowedRoots: [_archive]',
+      '    forbidNames: ["_backup"]',
+      '  protected:',
+      '    enabled: true',
+      '    patterns: ["**/U218*"]',
+      '',
+    ].join('\n'),
+  );
+
+  const report = await audit({ root });
+  assert.ok(report.protection.paths.some((item) => item.endsWith('U218_master.mp4')),
+    'the report names the path that actually matched the glob');
+
+  const chosen = selectAutoActions(report, report.autofix, buildFixPlan(report).actions);
+  assert.deepEqual(chosen, [], 'a subtree holding the original is never auto-moved');
+
+  const outcome = await applyAutoActions(report, {
+    actions: buildFixPlan(report).actions,
+    now: '2026-11-19T00:00:00.000Z',
+  });
+  assert.deepEqual(outcome.moved, [], 'and nothing moved when applied');
+  assert.equal(
+    (await stat(path.join(root, 'video', '_backup', 'U218_master.mp4'))).isFile(),
+    true,
+    'the original is exactly where it was',
+  );
+});
+
+test('X: a plan action carries the protected paths it was derived from', async () => {
+  const { root } = await protectedTree();
+  const report = await audit({ root });
+  const actions = buildFixPlan(report).actions;
+  const review = actions.find((action) => action.kind === 'review');
+  assert.ok(review !== undefined);
+  assert.ok(Array.isArray(review.protectedPaths) && review.protectedPaths.length > 0);
+});
