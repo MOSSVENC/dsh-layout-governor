@@ -233,3 +233,35 @@ test('V1b: an index missing whole tables is repaired, not merely column-patched'
   }
   repaired.close();
 });
+
+test('M3b: a bounded scan does not delete the rows it did not look at', async () => {
+  // Found by installing the plugin: the panel's quick scan walked 6000 entries and
+  // pruned the other 150k, so `layout_query` answered "no such file" for most of
+  // the workspace from then on.
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'lg-bounded-'));
+  created.push(dir);
+  const root = path.join(dir, 'tree');
+  await mkdir(path.join(root, 'a'), { recursive: true });
+  await mkdir(path.join(root, 'b'), { recursive: true });
+  for (let index = 0; index < 6; index += 1) {
+    await writeFile(path.join(root, 'a', `f${index}.js`), 'function x() {}\n');
+    await writeFile(path.join(root, 'b', `f${index}.js`), 'function y() {}\n');
+  }
+  await writeFile(path.join(root, 'layout.policy.yml'), 'version: 1\nrules: {}\n');
+  const store = path.join(dir, 'layout.db');
+
+  const complete = await audit({ root, storePath: store });
+  const before = complete.index.files;
+  // 12 files + the policy + the store itself is skipped, so 12-13 is the honest
+  // count; the point of the test is the comparison, not the absolute.
+  assert.ok(before >= 12, `full walk indexed ${before} rows`);
+
+  const bounded = await audit({ root, storePath: store, limits: { maxEntries: 5 } });
+  assert.equal(bounded.stats.truncated, true);
+  const after = bounded.index.files;
+
+  assert.ok(
+    after >= before,
+    `a bounded scan must not shrink the index (was ${before}, became ${after})`,
+  );
+});
