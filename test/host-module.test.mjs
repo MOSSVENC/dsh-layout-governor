@@ -95,7 +95,10 @@ function harness(config = {}) {
     inject(dependencies, body) {
       assert.deepEqual(dependencies, ['connection']);
       body({
-        get() {
+        get(name) {
+          if (name === 'workspaceRegistry') {
+            return { list: () => (config.allowedRoots ? config.allowedRoots().map((item) => ({ path: item })) : []) };
+          }
           return {
             fetch: {
               register(route) {
@@ -400,4 +403,55 @@ test('a busy session does not rescan on every write', async () => {
     1,
     'inside minRescanIntervalMs the trigger waits instead of walking again',
   );
+});
+
+test('M9: the panel route refuses a root that is not a workspace', async () => {
+  const root = await dirtree();
+  const other = await dirtree();
+  const { routes } = harness({
+    root,
+    allowedRoots: () => [root],
+  });
+
+  const allowed = await routes[0].fetch(
+    new Request('http://local/api/layout-governor/report', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ root, force: true }),
+    }),
+  );
+  assert.equal(allowed.status, 200);
+
+  const refused = await routes[0].fetch(
+    new Request('http://local/api/layout-governor/report', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ root: other, force: true }),
+    }),
+  );
+  assert.equal(refused.status, 403);
+  const payload = await refused.json();
+  assert.equal(payload.error.code, 'layout-governor/root-not-permitted');
+});
+
+test('M9: the route rate-limits repeated scans', async () => {
+  const root = await dirtree();
+  const { routes } = harness({ root });
+  const body = JSON.stringify({});
+  const first = await routes[0].fetch(
+    new Request('http://local/api/layout-governor/report', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body,
+    }),
+  );
+  assert.equal(first.status, 200);
+  const second = await routes[0].fetch(
+    new Request('http://local/api/layout-governor/report', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body,
+    }),
+  );
+  assert.equal(second.status, 429);
 });
