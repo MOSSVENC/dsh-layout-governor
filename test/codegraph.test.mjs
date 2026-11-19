@@ -4,7 +4,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
@@ -118,4 +118,79 @@ test('deleted code leaves the graph', async () => {
     0,
     'a query never reports a symbol from a deleted file',
   );
+});
+
+test('M1: dependents resolves the file a relative import points at', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'lg-dep-'));
+  created.push(dir);
+  const root = path.join(dir, 'tree');
+  await mkdir(path.join(root, 'src'), { recursive: true });
+  await writeFile(path.join(root, 'src', 'helper.js'), 'function helper() {}\n');
+  await writeFile(path.join(root, 'src', 'user.js'), "import './helper.js'\n");
+  await writeFile(path.join(root, 'layout.policy.yml'), 'version: 1\nrules: {}\n');
+  const store = path.join(dir, 'layout.db');
+  await audit({ root, storePath: store });
+
+  // The question an agent actually asks: by file name, not by the literal import string.
+  const byName = codeQuery({ storePath: store, mode: 'dependents', filters: { target: 'helper.js' } });
+  assert.equal(byName.rows.length, 1, 'a bare file name finds the importer');
+  assert.match(byName.rows[0].path, /user\.js/);
+
+  const byTarget = codeQuery({ storePath: store, mode: 'dependents', filters: { target: './helper.js' } });
+  assert.equal(byTarget.rows.length, 1, 'the literal target still works');
+});
+
+test('M2: a corrupt index is quarantined and rebuilt, not fatal', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'lg-corrupt-'));
+  created.push(dir);
+  const root = path.join(dir, 'tree');
+  await mkdir(root, { recursive: true });
+  await writeFile(path.join(root, 'layout.policy.yml'), 'version: 1\nrules: {}\n');
+  const store = path.join(dir, 'layout.db');
+
+  await writeFile(store, Buffer.from('this is not a sqlite database at all'));
+  const report = await audit({ root, storePath: store });
+  assert.equal(report.index?.error, undefined, 'the audit survives a corrupt index');
+  assert.ok(report.index?.files >= 0);
+
+  const quarantined = await readdir(dir);
+  assert.ok(
+    quarantined.some((name) => name.includes('.corrupt-')),
+    'the corrupt file is moved aside, not deleted',
+  );
+});
+
+test('M2: a foreign sqlite database is refused, not written into', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'lg-foreign-'));
+  created.push(dir);
+  const root = path.join(dir, 'tree');
+  await mkdir(root, { recursive: true });
+  await writeFile(path.join(root, 'layout.policy.yml'), 'version: 1\nrules: {}\n');
+  const store = path.join(dir, 'other.db');
+  const { DatabaseSync } = await import('node:sqlite');
+  const foreign = new DatabaseSync(store);
+  foreign.exec('CREATE TABLE someone_elses (id INTEGER PRIMARY KEY)');
+  foreign.close();
+
+  const report = await audit({ root, storePath: store });
+  assert.match(String(report.index?.error ?? ''), /did not create/i);
+  const tables = new DatabaseSync(store);
+  const names = tables.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
+  assert.deepEqual(names.map((row) => row.name), ['someone_elses'], 'no tables were added');
+  tables.close();
+});
+
+test('M3: run history is pruned instead of growing forever', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'lg-prune-'));
+  created.push(dir);
+  const root = path.join(dir, 'tree');
+  await mkdir(root, { recursive: true });
+  await writeFile(path.join(root, 'layout.policy.yml'), 'version: 1\nrules: {}\n');
+  const store = path.join(dir, 'layout.db');
+
+  for (let index = 0; index < 6; index += 1) {
+    await audit({ root, storePath: store, limits: { maxRuns: 2 } });
+  }
+  const report = await audit({ root, storePath: store, limits: { maxRuns: 2 } });
+  assert.ok(report.index.runs <= 2, `history kept ${report.index.runs} runs`);
 });

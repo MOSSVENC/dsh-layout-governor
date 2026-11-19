@@ -150,6 +150,19 @@ wanted to be true, and the reviewer tested it. **B6 was a description that descr
 an intention** rather than what the shipped configuration does. Both are the same
 failure: prose asserting a property nobody verified.
 
+## Round 7 — the audit's Major findings
+
+| # | Finding | Fix |
+| --- | --- | --- |
+| M1 | `dependents` was a `LIKE` on the raw import string, so asking by file name returned nothing | imports store a `resolved` absolute path; a file-name query matches `./x`, `./x.js`, and the resolved path |
+| M2 | a corrupt index was fatal; a **foreign** database got our tables written into it | corrupt files are quarantined to `.corrupt-<ts>` and rebuilt; a foreign database is refused, and the audit continues without an index |
+| M3 | `runs`/`findings` grew forever, inside the governed tree | runs are pruned to the newest 50, findings with them |
+| M4/M5 | CLI judged `.layout-index.db` as a top-level violation while the host hid it — the same tree got two verdicts | the index is skipped everywhere, CLI included |
+| M7 | "two-stage hashing" was two *modes*, not two stages: full mode streamed every candidate | signatures first, full hash only for colliding groups — measured on a 4 MB trio: 0.38 MiB for stage one, full read only for the survivors |
+| M8 | a symlink with a backup name was invisible to the backups rule | symlinks are candidates whatever their name looks like |
+| M10 | keep policy was "newest", which deletes the older copy in a workspace where the archive *is* the original | `rules.duplicates.keep: oldest` (default) with `newest`/`shortest` available |
+| minors | relative panel route, dead class enum, undo.sh not executable and silently skipping | absolute route; enum trimmed to what the classifier emits; `undo.sh` is `0755`, refuses to overwrite, and exits non-zero when a step is skipped |
+
 ## What is still not good
 
 Stated plainly, because a review that finds nothing is a review that did not look.

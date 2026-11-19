@@ -124,7 +124,11 @@ test('the plan is applied: files land in _archive, a log and an undo script exis
   const undo = await readFile(outcome.undoPath, 'utf8');
   assert.match(undo, /^#!\/usr\/bin\/env bash/);
   assert.match(undo, /set -eu/);
-  assert.equal(undo.split('\n').filter((line) => line.startsWith('mv -n -- ')).length, 2);
+  // One undo step per move, each guarded against clobbering an existing file.
+  assert.equal(undo.split('\n').filter((line) => line.startsWith('undo ')).length, 2);
+  assert.match(undo, /if \[ -e "\$to" \]/);
+  assert.match(undo, /exit 1/, 'a skipped step is reported as a failure, not a success');
+  assert.ok((await stat(outcome.undoPath)).mode & 0o100, 'undo.sh is executable');
 
   // The protected keeper is exactly where it was.
   assert.equal((await stat(path.join(root, 'writings', 'keeper', '_backup', 'only-copy.txt'))).isFile(), true);

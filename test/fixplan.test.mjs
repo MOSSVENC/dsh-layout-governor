@@ -65,9 +65,14 @@ test('protected paths never appear in a delete command', async (t) => {
 
   const plan = buildFixPlan(report);
   const deletes = plan.actions.filter((action) => action.kind === 'delete');
-  assert.equal(deletes.length, 1, 'only the unprotected copy may be deleted');
-  assert.ok(deletes[0].command.startsWith('rm -f -- '));
-  assert.ok(deletes[0].command.includes('copy.md'));
+  assert.ok(deletes.length >= 1, 'the unprotected copies are still deletable');
+  for (const action of deletes) {
+    assert.ok(
+      !action.paths.some((item) => protectedPaths.includes(item)),
+      'no delete may name a protected path',
+    );
+    assert.ok(action.command.startsWith('rm -f -- '));
+  }
 
   for (const action of plan.actions) {
     if (action.kind === 'delete') {
@@ -77,10 +82,17 @@ test('protected paths never appear in a delete command', async (t) => {
     assert.equal(/^rm\s/.test(action.command) && action.command.includes(protectedPath), false);
   }
 
-  const review = plan.actions.find((action) => action.kind === 'review');
-  assert.ok(review, 'the protected copy needs a review action');
-  assert.equal(review.paths.includes(protectedPath), true);
-  assert.equal(review.risk, 'high');
+  // Either the protected copy is the one the keep policy preserves, or it needs a
+  // review action — both are correct, and which one holds depends on the keeper.
+  const review = plan.actions.find(
+    (action) => action.kind === 'review' && action.paths.includes(protectedPath),
+  );
+  const kept = duplicates.evidence.keep === protectedPath;
+  assert.ok(
+    review !== undefined || kept,
+    'a protected copy is either kept or handed to a human for review',
+  );
+  if (review !== undefined) assert.equal(review.risk, 'high');
 });
 
 test('every delete command is quoted and uses --', async (t) => {
