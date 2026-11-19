@@ -33,8 +33,15 @@ classification:
 # undo.sh that puts everything back. `delete`, document edits and registry entries are
 # never automatic, and a protected path is never touched.
 autofix:
-  enabled: true
-  dryRun: false       # set true to keep the plan as a proposal only
+  # OFF by default. A plugin that says "read-only" in its own description must not
+  # ship a policy that moves files on the first automatic scan. Turn it on
+  # deliberately, after reading `--fix-plan` once:
+  #
+  #   enabled: true
+  #   dryRun: false
+  #
+  enabled: false
+  dryRun: true
   kinds: [move-to-archive]
   # Only findings about backup placement. A new top-level directory is flagged by
   # the top-level rule, and that is a human decision, not a self-healing one.

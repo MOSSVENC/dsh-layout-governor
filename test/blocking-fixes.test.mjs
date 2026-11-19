@@ -1,0 +1,233 @@
+/**
+ * Regression tests for the six blocking findings of the 2026-11-19 audit.
+ *
+ * Each test is named after the finding it pins, so a future regression is
+ * traceable to the review that demanded it.
+ */
+
+import assert from 'node:assert/strict';
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { after, test } from 'node:test';
+
+import { audit, buildFixPlan } from '../lib/engine/index.js';
+import { applyAutoActions, selectAutoActions } from '../lib/host/autofix.js';
+import { openIndex } from '../lib/engine/store.js';
+
+const created = [];
+
+after(async () => {
+  await Promise.all(created.map((dir) => rm(dir, { recursive: true, force: true })));
+});
+
+/**
+ * A tree with one misplaced backup directory that holds a protected original.
+ * @returns {Promise<{ root: string, dir: string }>}
+ */
+async function protectedTree() {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'lg-b2-'));
+  created.push(dir);
+  const root = path.join(dir, 'tree');
+  await mkdir(path.join(root, 'video', '_backup'), { recursive: true });
+  await writeFile(path.join(root, 'video', '_backup', 'U218.mp4'), 'irreplaceable');
+  await writeFile(
+    path.join(root, 'layout.policy.yml'),
+    [
+      'version: 1',
+      'classification:',
+      '  protected: ["**/U218*"]',
+      'rules:',
+      '  backups:',
+      '    enabled: true',
+      '    allowedRoots: [_archive]',
+      '    forbidNames: ["_backup"]',
+      '  protected:',
+      '    enabled: true',
+      '    severity: fail',
+      '    patterns: ["**/U218*"]',
+      '',
+    ].join('\n'),
+  );
+  return { root, dir };
+}
+
+test('B1: archiving twice never overwrites the first copy', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'lg-b1-'));
+  created.push(dir);
+  const root = path.join(dir, 'tree');
+  await mkdir(path.join(root, 'mining', '_backup'), { recursive: true });
+  await writeFile(path.join(root, 'mining', '_backup', 'old.bin'), 'first-generation');
+  await writeFile(
+    path.join(root, 'layout.policy.yml'),
+    // This test is about the mover, so the policy must opt in explicitly.
+    [
+      'version: 1',
+      'autofix:',
+      '  enabled: true',
+      '  dryRun: false',
+      '  rules: [backups]',
+      'rules:',
+      '  backups:',
+      '    enabled: true',
+      '    allowedRoots: [_archive]',
+      '    forbidNames: ["_backup"]',
+      '',
+    ].join('\n'),
+  );
+
+  const report = await audit({ root, autofix: false });
+  const actions = buildFixPlan(report).actions;
+  const outcome = await applyAutoActions(report, { actions, now: '2026-11-19T00:00:00.000Z' });
+  assert.equal(outcome.moved.length, 1);
+  // The source is a directory, so the archive entry is one too.
+  assert.equal((await stat(outcome.moved[0].destination)).isDirectory(), true);
+  const first = await readFile(path.join(outcome.moved[0].destination, 'old.bin'), 'utf8');
+  assert.equal(first, 'first-generation');
+
+  // A second misplaced backup with the same base name must not take that name.
+  await mkdir(path.join(root, 'mining', '_backup'), { recursive: true });
+  await writeFile(path.join(root, 'mining', '_backup', 'old.bin'), 'second-generation');
+  const again = await audit({ root, autofix: false });
+  const second = await applyAutoActions(again, {
+    actions: buildFixPlan(again).actions,
+    now: '2026-11-19T00:00:00.000Z',
+  });
+  assert.equal(second.moved.length, 1);
+  assert.notEqual(second.moved[0].destination, outcome.moved[0].destination, 'a new name was claimed');
+  assert.equal(
+    await readFile(path.join(outcome.moved[0].destination, 'old.bin'), 'utf8'),
+    'first-generation',
+    'the first copy survived',
+  );
+  assert.equal(
+    await readFile(path.join(second.moved[0].destination, 'old.bin'), 'utf8'),
+    'second-generation',
+  );
+});
+
+test('B2: a backup directory holding a protected original is never moved', async () => {
+  const { root } = await protectedTree();
+  const report = await audit({ root });
+  const finding = report.findings.find((item) => item.rule === 'backups');
+  assert.ok(finding !== undefined);
+  assert.equal(finding.fixable, false, 'the finding itself must say it cannot be fixed');
+  assert.ok(finding.evidence.protectedPaths.length > 0, 'the subtree was inspected, not just the path');
+
+  const actions = buildFixPlan(report).actions;
+  assert.ok(actions.every((action) => action.kind !== 'move-to-archive'), 'the plan offers no move');
+
+  const chosen = selectAutoActions(report, report.autofix, actions);
+  assert.deepEqual(chosen, [], 'and the auto-fixer refuses it too');
+});
+
+test('B3: a partial audit does not report pass', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'lg-b3-'));
+  created.push(dir);
+  const root = path.join(dir, 'tree');
+  await mkdir(path.join(root, 'writings'), { recursive: true });
+  await writeFile(path.join(root, 'writings', 'a.txt'), 'x');
+  await writeFile(path.join(root, 'layout.policy.yml'), 'version: 1\nrules:\n  docs:\n    enabled: true\n');
+
+  const bounded = await audit({ root, limits: { maxEntries: 1, maxDepth: 2 } });
+  assert.equal(bounded.stats.truncated, true);
+  assert.notEqual(bounded.overall, 'pass', 'a bounded audit is unproven, not clean');
+});
+
+test('B3: the tool value carries the evidence of partiality', async () => {
+  const { createAuditTool } = await import('../lib/host/audit-tool.js');
+  const { apply } = await import('../lib/index.js');
+
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'lg-b3b-'));
+  created.push(dir);
+  const root = path.join(dir, 'tree');
+  await mkdir(root, { recursive: true });
+  await writeFile(path.join(root, 'layout.policy.yml'), 'version: 1\nrules: {}\n');
+
+  const tools = [];
+  apply(
+    {
+      tools: { register: (definition) => (tools.push(definition), () => {}) },
+      get: () => undefined,
+      effect: (run) => run(),
+      on: () => () => {},
+      inject: (_deps, body) => body({ get: () => undefined, effect: (run) => run() }),
+      logger: { warn() {}, info() {} },
+    },
+    { root, autoScan: false },
+  );
+  const auditTool = tools.find((tool) => tool.name === 'layout_audit');
+  assert.ok(auditTool !== undefined);
+
+  const value = await auditTool.execute({ root }, {});
+  assert.ok('stats' in value, 'the model needs to know whether the scan was bounded');
+  assert.equal(typeof value.stats.truncated, 'boolean');
+  assert.equal(typeof value.stats.unreadable, 'number');
+  assert.ok(auditTool.output.schema.required.includes('stats'));
+  assert.equal(createAuditTool.length >= 0, true);
+});
+
+test('B4: the index waits instead of failing on a locked database', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'lg-b4-'));
+  created.push(dir);
+  const file = path.join(dir, 'x.db');
+  const db = openIndex(file);
+  const timeout = db.prepare('PRAGMA busy_timeout').get();
+  assert.ok(Object.values(timeout)[0] >= 1000, 'a busy timeout is configured');
+  db.close();
+});
+
+test('B5: a reload disposes the route and the watcher, not only the tools', async () => {
+  const { apply } = await import('../lib/index.js');
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'lg-b5-'));
+  created.push(dir);
+  const root = path.join(dir, 'tree');
+  await mkdir(root, { recursive: true });
+
+  let routes = 0;
+  let watchers = 0;
+  const makeCtx = () => ({
+    tools: { register: () => () => {} },
+    get: () => undefined,
+    effect(run) {
+      const dispose = run();
+      return () => {
+        watchers += 1;
+        if (typeof dispose === 'function') dispose();
+      };
+    },
+    on: () => () => {},
+    inject(_deps, body) {
+      body({
+        get: () => ({
+          fetch: {
+            register: () => {
+              routes += 1;
+              return () => {
+                routes -= 1;
+              };
+            },
+          },
+        }),
+        effect: (run) => run(),
+      });
+    },
+    logger: { warn() {}, info() {} },
+  });
+
+  apply(makeCtx(), { root, autoScan: true, bootDelayMs: 1 });
+  assert.equal(routes, 1);
+  apply(makeCtx(), { root, autoScan: true, bootDelayMs: 1 });
+  assert.equal(routes, 1, 'the previous route was removed before the new one registered');
+  assert.ok(watchers >= 1, 'the previous effects were disposed');
+});
+
+test('B6: the shipped policy never enables moving files', async () => {
+  const policy = await readFile(new URL('../layout.policy.yml', import.meta.url), 'utf8');
+  assert.match(policy, /autofix:\s*\n(?:[ #].*\n)*\s*enabled: false/, 'autofix ships off');
+  assert.match(policy, /dryRun: true/, 'and in dry-run even if switched on');
+  const parsed = await audit({ root: path.dirname(new URL(import.meta.url).pathname) });
+  assert.equal(parsed.autofix.enabled, false);
+  assert.equal(parsed.autofix.dryRun, true);
+  assert.equal((await stat(new URL('../layout.policy.yml', import.meta.url))).isFile(), true);
+});

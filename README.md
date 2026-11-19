@@ -69,8 +69,8 @@ and only the third is a person:
    re-reads the Host cache every 15 seconds while it is visible, so it converges on
    its own.
 
-With `autofix` enabled in the policy, a trigger-driven scan also performs the
-reversible half of the plan: misplaced backups move to
+`autofix` is **off** in the shipped policy. When a workspace opts in (`autofix.enabled: true`),
+a trigger-driven scan also performs the reversible half of the plan: misplaced backups move to
 `_archive/YYYYMMDD_<source>/`, with a `moves.jsonl` log and an `undo.sh` beside
 them. Deletions, document edits and registry entries stay human. See
 [`docs/policy.md`](docs/policy.md#autofix).

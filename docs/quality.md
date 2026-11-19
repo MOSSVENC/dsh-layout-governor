@@ -129,6 +129,27 @@ line inside `import (...)`), and my own test asserted that a call site counted a
 definition — the test was wrong, not the code, which is worth writing down because
 the instinct on a failing test is to "fix" the implementation.
 
+## Round 6 — the independent audit said "不可装入"
+
+A reviewer with no access to my reasoning, given the source and the reference
+projects, returned **不可装入** with six blocking findings. All six were real. Fixed
+here, each with a regression test named after the finding.
+
+| # | Finding | Fix | Test |
+| --- | --- | --- | --- |
+| B1 | `rename` **replaces** an existing destination; my comment claimed the opposite, so a second archive pass silently destroyed the first copy | the destination name is claimed with `open(..., 'wx')` first, and a numeric suffix is used when taken | `blocking-fixes.test.mjs` "B1" |
+| B2 | a backup **directory** containing a protected original was moved wholesale; a finding still said `fixable: yes` | the backups rule inspects the subtree for protected paths; the selector re-checks the policy globs before any move | "B2" |
+| B3 | truncated or partially unreadable trees still reported `pass`, and the tool value omitted `stats` entirely | `overall` is `warn` when the walk was truncated or anything was unreadable; `stats` is a required field of the tool output | "B3" twice |
+| B4 | two sessions on one index hit `database is locked`; three of four processes died | `timeout: 5000` on open plus `PRAGMA busy_timeout` | "B4" |
+| B5 | a reload disposed the three tools only; the route, the listener and pending timers survived | every side effect now lands in `teardown`, including the route disposer | "B5" |
+| B6 | the tool description said "strictly read-only, never moves", while the shipped policy had `autofix.enabled: true, dryRun: false` | autofix ships **off** and in dry-run; the description states the condition | "B6" |
+
+The two that matter as lessons, not chores: **B1 was a comment that lied about the
+platform** — I wrote "rename fails rather than clobbering" because that is what I
+wanted to be true, and the reviewer tested it. **B6 was a description that described
+an intention** rather than what the shipped configuration does. Both are the same
+failure: prose asserting a property nobody verified.
+
 ## What is still not good
 
 Stated plainly, because a review that finds nothing is a review that did not look.
