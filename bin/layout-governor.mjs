@@ -2,7 +2,8 @@
 /**
  * layout-governor — command line front end.
  *
- * Exit codes: 0 ok, 1 `--check` found a `fail`, 2 usage or engine error.
+ * Exit codes: 0 ok, 1 `--check` found anything other than a clean pass, 2 usage
+ * or engine error.
  * Output is plain text with no ANSI colour so it survives pipes and log files.
  */
 
@@ -199,7 +200,8 @@ async function main(argv) {
     write(formatReport(report, options.format));
   }
 
-  if (options.check && report.overall === 'fail') return 1;
+  // A gate that passes `warn` is a gate that passes a partial or dirty tree.
+  if (options.check && report.overall !== 'pass') return 1;
   return 0;
 }
 

@@ -205,3 +205,25 @@ test('a top-level finding is never auto-moved, even though it is reversible', as
   assert.ok(!chosen.some((action) => action.paths[0] === path.join(root, 'mining')));
   assert.ok(chosen.every((action) => action.rule === 'backups'));
 });
+
+test('a directory whose subtree matches a protected glob is refused by the selector', async () => {
+  const root = await tree();
+  const { report, actions } = await plan(root);
+  // Pretend a policy protects a path inside an otherwise movable directory.
+  const withProtection = {
+    ...report,
+    protection: { patterns: ['writings/keeper/**'] },
+  };
+  const chosen = selectAutoActions(withProtection, withProtection.autofix, actions.concat([
+    {
+      kind: 'move-to-archive',
+      rule: 'backups',
+      paths: [path.join(root, 'writings')],
+      risk: 'medium',
+    },
+  ]));
+  assert.ok(
+    !chosen.some((action) => action.paths[0] === path.join(root, 'writings')),
+    'the glob guard catches what the per-finding list misses',
+  );
+});
