@@ -163,6 +163,7 @@ subject is layout, not code structure.
 | `runs` | one row per audit: verdict, counts, policy, whether the walk was bounded |
 | `findings` | one row per finding, attached to the run that produced it |
 | `registry` | the declared purpose of every registered large file |
+| `code_files` / `symbols` / `imports` | the code graph: what is defined where, and what depends on what |
 
 Two consequences worth knowing:
 
@@ -173,7 +174,14 @@ Two consequences worth knowing:
   never reports a file that is gone; findings are scoped to the newest run, so
   three scans of the same tree answer once.
 
-`layout_query` reads it — see below.
+`layout_query` and `code_graph` read it — see below.
+
+The code tables are the other half of the `codegraph` idea. Extraction is line-oriented
+per language — Python, JS/TS/MJS, shell, C/C++, Rust, Go, GDScript — chosen because
+those are the languages this workspace actually contains, measured before writing it.
+It answers *where is this defined*, *what does this file import*, *who imports this
+module*. It does not resolve scope and does not claim a call graph; the description
+says so, so an agent cannot be misled by it.
 
 ## The tool the agent gets
 
@@ -190,6 +198,18 @@ Two consequences worth knowing:
 ```
 
 The tool description tells the model to run it *before* reorganizing, deduplicating or deleting in a workspace, and that the plan it returns must be reviewed rather than run blind.
+
+`code_graph` — the code half of the index.
+
+```jsonc
+{ "mode": "symbol", "name": "runAudit" }        // where is it defined
+{ "mode": "imports", "path": "lib/index.js" }   // what does it depend on
+{ "mode": "dependents", "target": "./engine" }  // who would break if this moved
+{ "mode": "file", "path": "lib/index.js" }      // every symbol in it
+```
+
+Measured on this workspace: 1741 code files indexed, 28 559 symbols, 6252 imports;
+the second pass parsed **0** files.
 
 `layout_query` — questions answered from the index, without a walk.
 

@@ -131,8 +131,11 @@ test('the host exposes one tool and one route', () => {
   const { tools, routes } = harness();
   assert.equal(name, 'layout-governor');
   assert.deepEqual(inject, ['tools']);
-  assert.equal(tools.length, 2, 'an audit tool and an index query tool');
-  assert.deepEqual(tools.map((tool) => tool.name).sort(), ['layout_audit', 'layout_query']);
+  assert.equal(tools.length, 3, 'audit, index query and code graph');
+  assert.deepEqual(
+    tools.map((tool) => tool.name).sort(),
+    ['code_graph', 'layout_audit', 'layout_query'],
+  );
   assert.equal(tools[0].name, 'layout_audit');
   assert.equal(tools[0].parameters.type, 'object');
   assert.ok(Array.isArray(tools[0].parameters.properties.rule.items.enum));
@@ -235,7 +238,7 @@ test('a profile without a connection channel still registers the tool', () => {
     inject: (_dependencies, body) => body({ get: () => undefined, effect: (run) => run() }),
   };
   apply(ctx, {});
-  assert.equal(tools.length, 2, 'neither tool depends on the web channel');
+  assert.equal(tools.length, 3, 'none of the tools depends on the web channel');
 });
 
 test('the row config sets the root and the cache lifetime', async () => {

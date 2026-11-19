@@ -112,6 +112,23 @@ the same as no index, and nothing complains. `store.test.mjs` now asserts that a
 second audit hashes **zero** files, which is the only assertion that could have
 caught it.
 
+## Round 5 — the code graph
+
+Requested: not just the database shape, but `codegraph`'s actual功能. Added
+`lib/engine/codegraph.js` (line-oriented extraction for the eight languages this
+workspace contains, measured first: py 14938, mjs 1228, js 954, ts 485, sh 469, cpp
+365, c 161, rs 115, go 30, gd 28) and the `symbols`/`imports` tables behind
+`code_graph`.
+
+What it deliberately is **not**: a parser. No scope resolution, no call graph, no
+type information. The tool description states the boundary, because a tool that
+overclaims gets trusted and then misleads.
+
+Two defects caught by its tests: Go grouped imports were invisible (the bare quoted
+line inside `import (...)`), and my own test asserted that a call site counted as a
+definition — the test was wrong, not the code, which is worth writing down because
+the instinct on a failing test is to "fix" the implementation.
+
 ## What is still not good
 
 Stated plainly, because a review that finds nothing is a review that did not look.
