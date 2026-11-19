@@ -92,6 +92,26 @@ What this round taught: **an autonomous feature needs a cost budget as loud as i
 correctness**, and a plugin installed by symlink must assume it will be edited while
 running. Both were design omissions, not bugs in a corner case.
 
+## Round 4 — adopting the codegraph shape
+
+Requested: index it once, keep it current automatically, let the model query it,
+and check against it. Done, on `node:sqlite`, no dependency.
+
+| Piece | Where | Promise |
+|---|---|---|
+| schema + queries | `lib/engine/store.js` | one file, four tables, reopen is idempotent |
+| sync | `syncFiles` / `syncRegistry` | rows for vanished paths are deleted; the registry cannot rot |
+| digest reuse | `hashing.js` `lookup` | an unchanged file answers from a row, not the disk |
+| history | `runs` / `findings` | findings are scoped to the newest run |
+| model surface | `layout_query` | filters by name, size, kind, class, rule, severity |
+
+Defect found while testing it: `lookupHash` compared a stored **floored** mtime with
+an unfloored one, so every file looked changed and the index never saved a read.
+That is the exact failure mode an index invites — it looks like it works, it costs
+the same as no index, and nothing complains. `store.test.mjs` now asserts that a
+second audit hashes **zero** files, which is the only assertion that could have
+caught it.
+
 ## What is still not good
 
 Stated plainly, because a review that finds nothing is a review that did not look.

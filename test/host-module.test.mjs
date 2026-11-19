@@ -131,7 +131,8 @@ test('the host exposes one tool and one route', () => {
   const { tools, routes } = harness();
   assert.equal(name, 'layout-governor');
   assert.deepEqual(inject, ['tools']);
-  assert.equal(tools.length, 1);
+  assert.equal(tools.length, 2, 'an audit tool and an index query tool');
+  assert.deepEqual(tools.map((tool) => tool.name).sort(), ['layout_audit', 'layout_query']);
   assert.equal(tools[0].name, 'layout_audit');
   assert.equal(tools[0].parameters.type, 'object');
   assert.ok(Array.isArray(tools[0].parameters.properties.rule.items.enum));
@@ -172,9 +173,12 @@ test('fixPlan appends a reviewable script without running it', async () => {
 
   assert.match(value.text, /```bash/);
   assert.match(value.text, /set -eu/);
-  // Nothing was removed: the audit is read-only.
+  // Nothing was removed: the audit is read-only. The one new file is the index the
+  // audit writes beside the tree, which the walker skips so it never audits itself.
   const { readdir } = await import('node:fs/promises');
-  assert.equal((await readdir(root)).length, 4);
+  const onDisk = await readdir(root);
+  assert.equal(onDisk.length, 5);
+  assert.deepEqual(onDisk.filter((name) => name.startsWith('.layout-index')), ['.layout-index.db']);
 });
 
 test('the panel route answers with the same report', async () => {
@@ -231,7 +235,7 @@ test('a profile without a connection channel still registers the tool', () => {
     inject: (_dependencies, body) => body({ get: () => undefined, effect: (run) => run() }),
   };
   apply(ctx, {});
-  assert.equal(tools.length, 1, 'the audit tool does not depend on the web channel');
+  assert.equal(tools.length, 2, 'neither tool depends on the web channel');
 });
 
 test('the row config sets the root and the cache lifetime', async () => {

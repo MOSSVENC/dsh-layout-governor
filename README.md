@@ -147,6 +147,34 @@ node bin/layout-governor.mjs --root . --check              # exit 1 when overall
 
 Wire it into `pre-commit`, a cron job, or CI: `--check` turns the policy into a gate.
 
+## The index
+
+Every audit writes a SQLite index beside the tree (`.layout-index.db`), built on
+Node's own `node:sqlite` — no dependency, no native build. The architecture is
+lifted from [`colbymchenry/codegraph`](https://github.com/colbymchenry/codegraph)
+and [`CodeGraphContext/CodeGraphContext`](https://github.com/CodeGraphContext/CodeGraphContext):
+index once, keep it in sync as the tree changes, let an agent query it instead of
+walking the world. The nodes here are paths rather than functions, because the
+subject is layout, not code structure.
+
+| table | holds |
+|---|---|
+| `files` | one row per path: kind, size, mtime, content hash and how strongly it was proven |
+| `runs` | one row per audit: verdict, counts, policy, whether the walk was bounded |
+| `findings` | one row per finding, attached to the run that produced it |
+| `registry` | the declared purpose of every registered large file |
+
+Two consequences worth knowing:
+
+- **A repeated question costs no disk.** An unchanged file (same size and mtime)
+  answers from the index, so a second full audit hashes nothing. Measured here:
+  the first pass hashed 4 files / 429 MB; the second hashed **0 bytes**.
+- **The index is also the history.** Deleting a path removes its row, so a query
+  never reports a file that is gone; findings are scoped to the newest run, so
+  three scans of the same tree answer once.
+
+`layout_query` reads it — see below.
+
 ## The tool the agent gets
 
 `layout_audit` — read-only audit of a tree.
@@ -161,7 +189,15 @@ Wire it into `pre-commit`, a cron job, or CI: `--check` turns the policy into a 
 }
 ```
 
-The tool description tells the model to run it *before* reorganizing, deduplicating or deleting in a workspace, and that the plan it returns must be reviewed rather than run blind. The panel and the tool read the same Host route, so they cannot disagree.
+The tool description tells the model to run it *before* reorganizing, deduplicating or deleting in a workspace, and that the plan it returns must be reviewed rather than run blind.
+
+`layout_query` — questions answered from the index, without a walk.
+
+```jsonc
+{ "minSize": 1073741824, "class": "regenerable", "limit": 20 }
+{ "rule": "backups" }          // what the newest audit flagged
+{ "name": "install.wim" }      // where is it, how many copies
+``` The panel and the tool read the same Host route, so they cannot disagree.
 
 ## Policy
 

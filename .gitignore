@@ -6,3 +6,6 @@ coverage/
 .nyc_output/
 test/.tmp/
 fixtures/.out/
+.layout-index.db
+.layout-index.db-wal
+.layout-index.db-shm
