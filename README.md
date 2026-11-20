@@ -7,7 +7,7 @@
 - `layout.policy.yml` 是清单：哪些顶层目录合法、什么算备份、哪些路径受保护。
 - 门在写入落地之前判定：新顶层条目先登记，再落地。
 
-它写得少、读得懂、删得掉：不建数据库，索引与代码理解交给 `codegraph`，本插件只负责「东西放哪儿」。
+职责范围很窄：目录与文件的归属。代码与符号查询由 `codegraph` 承担，版本历史由 git 承担。
 
 ## 它做四件事
 
@@ -57,11 +57,9 @@ node bin/layout-governor.mjs --root /mnt/d/studio --check
 
 装进 DSH：`dsh plugin --profile web install /path/to/layout-governor`，重启后生效。
 
-## 边界
+## 相邻职责
 
-- 代码与符号查询：`codegraph`（原版，`codegraph serve --mcp`）。
-- 版本控制：git。
-- 本插件管的是「目录语义」这一层。
+代码与符号查询：`codegraph serve --mcp`。版本历史：git。本插件管「目录语义」。
 
 ## 文档
 
