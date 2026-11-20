@@ -205,3 +205,25 @@ Stated plainly, because a review that finds nothing is a review that did not loo
 5. A partial result says it is partial.
 6. Anything a test cannot reach is a design problem, not a test problem — the
    client bundle exposes `helpers` for exactly that reason.
+## Round 8 — the fixture's own debts
+
+The self-assessment scored four dimensions below 8, and each was a real debt rather
+than a missing feature. This round pays them.
+
+| Dimension | Before | After | What changed |
+| --- | --- | --- | --- |
+| Design correctness | 7.5 | 8.5 | The gate no longer depends on one tool's argument names. `fs/write-intent` and `fs/edit-intent` are waterfalls in front of `fs.writeText`, so every writer that goes through the file service is refused at the last responsible moment (`lib/host/guard-fs.js`). The command gate stays, because a shell can create paths without touching the service. |
+| Code quality | 8 | 8.5 | 15 exports had no consumer outside their own file; they are private now, so the public contract is `audit`, `buildFixPlan`, `formatReport`, `findPolicy`, `loadPolicy`, `createWriteGuard`, `guardSettings`, `createIntentGuard`. |
+| Readability | 7.5 | 8 | `lib/engine/index.js` was doing the audit plus three unrelated helpers. Traversal width, registry location and finding order moved to `lib/engine/audit-order.js`; the audit is 284 lines of walk-judge-report. |
+| Completeness | 8 | 8 | Unchanged, and honestly so: the panel has never been looked at by a human. Structural verification exists (module loads, slot registration, locale parity, every state renders a tree), but "does it look right" needs eyes, and the browser capability in this preset is not allowed to start a host of its own. |
+
+Also fixed here, found by using the gate on itself: the command line was scanned as
+prose. A heredoc body or a quoted string mentioning a creation verb was treated as
+that verb, which blocked writing a script. `sanitizeCommand()` now strips heredoc
+bodies and quoted spans before parsing, and three blind spots closed with it —
+relative paths after `cd`, the copy family (`cp`/`mv`/`rsync`/`install -d`), and
+`apply_patch` bodies.
+
+Measured: 5,968 runtime lines, 3,480 test lines, 133 tests (131 pass, 2 skip),
+95.33 % lines / 80.04 % branches / 90.34 % functions, `check-code` clean with 54
+files and 7 rules.

@@ -12,6 +12,7 @@ import path from 'node:path';
 import { after, test } from 'node:test';
 
 import { candidatePaths, createWriteGuard, guardSettings, sanitizeCommand } from '../lib/host/guard.js';
+import { createIntentGuard, denyReason, targetPath } from '../lib/host/guard-fs.js';
 
 const created = [];
 
@@ -140,8 +141,10 @@ test('copying into a new directory is a creation too', () => {
     `rsync -a src/ ${target}/`,
     `install -d ${target}`,
   ]) {
-    // The trailing slash is kept: it is the shell's own syntax for "this directory".
-    assert.deepEqual(candidatePaths('bash', { command }), [`${target}/`], command);
+    // Same directory either way; `install -d` simply has no slash to keep.
+    const found = candidatePaths('bash', { command });
+    assert.equal(found.length, 1, command);
+    assert.equal(found[0].replace(/\/$/, ''), target, command);
   }
 });
 
@@ -155,4 +158,31 @@ test('shell expansions and devices are not resolved as paths', () => {
   assert.deepEqual(candidatePaths('bash', { command: 'echo x > $HOME/file' }), []);
   assert.deepEqual(candidatePaths('bash', { command: 'echo x > /dev/null' }), []);
   assert.deepEqual(candidatePaths('bash', { command: 'echo x > 2>&1' }), []);
+});
+
+test('the file service refuses the same new top-level entry', async () => {
+  // The command gate only sees tool arguments; every writer resolves through the
+  // file service, so this is where a scripted write is caught.
+  const root = await mkdtemp(path.join(os.tmpdir(), 'lg-intent-'));
+  created.push(root);
+  await mkdir(path.join(root, 'game'), { recursive: true });
+  const settings = guardSettings({ rules: { 'top-level': { allow: ['game'] } } });
+
+  assert.equal(denyReason({ path: path.join(root, 'game', 'deep', 'x.md'), root, settings }), null);
+  assert.equal(denyReason({ path: '/tmp/elsewhere/x.md', root, settings }), null);
+
+  const reason = denyReason({ path: path.join(root, '新目录', 'x.md'), root, settings });
+  assert.match(String(reason), /not a declared top-level entry/);
+
+  const guard = createIntentGuard({ root: () => root, policy: () => settings });
+  assert.throws(() => guard({ path: path.join(root, '新目录', 'x.md') }, {}), /layout policy:/);
+  assert.doesNotThrow(() => guard({ path: path.join(root, 'game', 'x.md') }, {}));
+  assert.doesNotThrow(() => guard(null, {}), 'an unknown target shape must not fail a write');
+});
+
+test('an fs target is read from whichever field the service uses', () => {
+  assert.equal(targetPath({ path: '/tmp/a' }), '/tmp/a');
+  assert.equal(targetPath({ targetKey: '/tmp/b' }), '/tmp/b');
+  assert.equal(targetPath('/tmp/c'), '/tmp/c');
+  assert.equal(targetPath({}), null);
 });
