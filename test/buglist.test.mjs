@@ -160,3 +160,43 @@ test('L7: every refusal names the path and carries a code', async () => {
     (error) => error instanceof AuditError && error.code === 'root-not-directory',
   );
 });
+
+test('L3b: with no session, the resolver picks the workspace that carries a policy', async () => {
+  const governed = await tree();
+  const plain = await tree();
+  await writeFile(path.join(governed, 'layout.policy.yml'), 'version: 1\nrules: {}\n');
+
+  const ctx = {
+    get(name) {
+      if (name !== 'workspaceRegistry') return undefined;
+      return {
+        // The ungoverned project is "newer": that alone used to win.
+        list: () => [
+          { path: governed, updatedAt: '2026-11-20T01:00:00.000Z' },
+          { path: plain, updatedAt: '2026-11-20T05:00:00.000Z' },
+        ],
+      };
+    },
+  };
+
+  const { resolveRoot } = await import('../lib/host/root.js');
+  assert.equal(resolveRoot(ctx, {}, undefined), path.resolve(governed));
+});
+
+test('L3b: without a policy anywhere, the newest workspace still answers', async () => {
+  const older = await tree();
+  const newer = await tree();
+  const ctx = {
+    get(name) {
+      if (name !== 'workspaceRegistry') return undefined;
+      return {
+        list: () => [
+          { path: older, updatedAt: '2026-11-20T01:00:00.000Z' },
+          { path: newer, updatedAt: '2026-11-20T05:00:00.000Z' },
+        ],
+      };
+    },
+  };
+  const { resolveRoot } = await import('../lib/host/root.js');
+  assert.equal(resolveRoot(ctx, {}, undefined), path.resolve(newer));
+});
