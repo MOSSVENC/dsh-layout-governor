@@ -217,14 +217,14 @@ test('the route reports an engine failure instead of throwing', async () => {
   assert.equal(response.status, 200);
   assert.equal(payload.ok, false);
   assert.equal(payload.error.code, 'layout-governor/scan-failed');
-  assert.match(payload.error.message, /ENOENT|no such file|not a directory/i);
+  assert.match(payload.error.message, /does not exist|root-missing|root-not-directory/i);
 });
 
 test('the tool refuses a root that does not exist', async () => {
   const { tools } = harness();
   await assert.rejects(
     () => tools[0].execute({ root: '/definitely/not/a/directory' }, {}),
-    /ENOENT|no such file|not a directory/i,
+    /does not exist|root-missing|root-not-directory/i,
   );
 });
 

@@ -158,7 +158,8 @@ test('layout.policy.yml resolves into seven enabled rule configs', async () => {
   // A path this policy *protects* must not also be globally ignored: the walk has to
   // see it for the protected rule to be able to say whether the file is there.
   assert.deepEqual(resolveIgnore(loaded.doc), ['**/node_modules/**', '**/.git/**']);
-  assert.equal(resolveClassification(loaded.doc).regenerable.length, 5);
+  // Build output joins the policy list: target/, build/, dist/, out/, DerivedData.
+  assert.equal(resolveClassification(loaded.doc).regenerable.length, 5 + 5);
 });
 
 test('layout.registry.yml parses and declares the real payloads', async () => {

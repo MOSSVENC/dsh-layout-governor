@@ -182,7 +182,10 @@ async function main(argv) {
   try {
     report = await audit(auditOptions);
   } catch (err) {
-    process.stderr.write(`layout-governor: ${err && err.message ? err.message : err}\n`);
+    // L7: one shape for every refusal. An AuditError carries a code; anything else is
+    // a runtime failure and says so, rather than surfacing a bare Node message.
+    const code = err && err.code && typeof err.code === 'string' ? `${err.code}: ` : '';
+    process.stderr.write(`layout-governor: ${code}${err && err.message ? err.message : err}\n`);
     return 2;
   }
 
@@ -204,6 +207,11 @@ async function main(argv) {
   }
 
   // A gate that passes `warn` is a gate that passes a partial or dirty tree.
+  for (const problem of report.configErrors ?? []) {
+    process.stderr.write(`layout-governor: ${problem.message}\n`);
+    process.stderr.write(`layout-governor: known rule ids: ${problem.known.join(', ')}\n`);
+  }
+  if ((report.configErrors ?? []).length > 0) return 2;
   if (options.check && report.overall !== 'pass') return 1;
   return 0;
 }

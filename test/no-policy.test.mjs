@@ -52,13 +52,22 @@ async function bareTree() {
   return { parent, root };
 }
 
-test('without a policy file nothing is enforced', async () => {
+test('without a policy file nothing is enforced, and the verdict says so', async () => {
   const { root } = await bareTree();
   const report = await audit({ root });
 
   assert.equal(report.policy.present, false);
   assert.equal(report.policy.inherited, false);
-  assert.equal(report.overall, 'pass');
+  // L1: missing configuration and a clean tree must not look the same. Nothing is
+  // reported against this tree, and the verdict still cannot claim green.
+  assert.equal(report.overall, 'warn');
+  assert.equal(report.verdictReason, 'no-policy');
+  assert.equal(report.policy.state, 'absent');
+  // L2: no hash, because nothing was read.
+  assert.equal(report.policy.sha256, null);
+  assert.equal(report.policy.source, 'defaults');
+  // L9: the gate's vocabulary is visible even when the file is missing.
+  assert.deepEqual(report.policy.topLevel.allow, []);
   assert.deepEqual(report.counts, { fail: 0, warn: 0, info: 0 });
   assert.deepEqual(report.findings, []);
   assert.ok(report.rules.every((rule) => rule.enabled === false));
@@ -71,7 +80,7 @@ test('without a policy file nothing is enforced', async () => {
 
 test('the same tree turns red once the policy is present', async () => {
   const { root } = await bareTree();
-  assert.equal((await audit({ root })).overall, 'pass');
+  assert.equal((await audit({ root })).overall, 'warn');
 
   await writeFile(path.join(root, 'layout.policy.yml'), POLICY);
   const report = await audit({ root });
@@ -114,10 +123,10 @@ test('both output formats say that no policy was found', async () => {
 
   const text = formatReport(report, 'text');
   assert.match(text, /no policy file found/i);
-  assert.match(text, /nothing is enforced/i);
-  assert.match(text, /overall: PASS/);
+  assert.match(text, /never judged against this workspace/i);
+  assert.match(text, /overall: WARN   fail 0 .* \(no-policy\)/);
 
   const markdown = formatReport(report, 'markdown');
   assert.match(markdown, /## No policy/);
-  assert.match(markdown, /nothing is\s+enforced/i);
+  assert.match(markdown, /never judged against this workspace/i);
 });
