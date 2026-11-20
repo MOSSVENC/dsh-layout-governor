@@ -48,6 +48,13 @@ autofix:
   rules: [backups]
   maxPerRun: 20
 
+# The gate: refuse new top-level entries before they are created, instead of
+# cleaning them up afterwards. It only polices the first level of the workspace and
+# only paths that do not exist yet; everything that already exists stays writable,
+# and `enabled: false` turns the gate off without touching the audit.
+guard:
+  enabled: true
+
 rules:
   # The root is a map, not a scratch directory: a new top-level name is a
   # decision, so it must be declared here first.

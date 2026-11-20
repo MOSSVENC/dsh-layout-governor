@@ -455,3 +455,28 @@ test('M9: the route rate-limits repeated scans', async () => {
   );
   assert.equal(second.status, 429);
 });
+
+test('the guard is registered on the pre-execute waterfall', () => {
+  const listeners = [];
+  const ctx = {
+    tools: { register: () => () => {} },
+    get: () => undefined,
+    effect: (run) => run(),
+    on: (name, handler) => {
+      listeners.push({ name, handler });
+      return () => {};
+    },
+    inject: (_deps, body) => body({ get: () => undefined, effect: (run) => run() }),
+    logger: { warn() {}, info() {} },
+  };
+  apply(ctx, { root: '/mnt/d/studio', autoScan: false });
+  assert.ok(
+    listeners.some((entry) => entry.name === 'tools/pre-execute'),
+    'the gate must be in the dispatch path, not the audit path',
+  );
+  for (const listener of listeners) {
+    if (listener.name === 'tools/pre-execute') {
+      assert.equal(typeof listener.handler, 'function');
+    }
+  }
+});
