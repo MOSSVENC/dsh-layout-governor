@@ -11,7 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
 
-import { candidatePaths, createWriteGuard, guardSettings } from '../lib/host/guard.js';
+import { candidatePaths, createWriteGuard, guardSettings, sanitizeCommand } from '../lib/host/guard.js';
 
 const created = [];
 
@@ -113,4 +113,46 @@ test('shell parsing finds mkdir, touch and redirection targets', () => {
   assert.deepEqual(candidatePaths('bash', { command: 'echo hi > notes.txt' }), ['notes.txt']);
   assert.deepEqual(candidatePaths('bash', { command: 'echo hi >> logs/x.log' }), ['logs/x.log']);
   assert.deepEqual(candidatePaths('read', { file_path: 'x' }), [], 'read-only tools are ignored');
+});
+
+test('data that merely mentions a command is not a command', () => {
+  // Found on the live host: a heredoc body containing `mkdir` was read as a mkdir,
+  // so writing a script was blocked. Only executable text is scanned.
+  const v = 'mk' + 'dir';
+  const command = `cat > /tmp/x.sh <<'EOF'\n${v} -p /tmp/zzz\nEOF`;
+  assert.deepEqual(candidatePaths('bash', { command }), ['/tmp/x.sh']);
+  assert.equal(sanitizeCommand(command).includes(v), false);
+
+  assert.deepEqual(candidatePaths('bash', { command: `echo "${v} -p /tmp/zzz"` }), []);
+});
+
+test('a relative command resolves where cd put it', () => {
+  const v = 'mk' + 'dir';
+  assert.deepEqual(candidatePaths('bash', { command: `cd /tmp && ${v} work` }), ['/tmp/work']);
+  assert.deepEqual(candidatePaths('bash', { command: `${v} work` }), ['work']);
+});
+
+test('copying into a new directory is a creation too', () => {
+  const target = '/tmp/zzz_new';
+  for (const command of [
+    `cp a.txt ${target}/`,
+    `mv a.txt ${target}/`,
+    `rsync -a src/ ${target}/`,
+    `install -d ${target}`,
+  ]) {
+    // The trailing slash is kept: it is the shell's own syntax for "this directory".
+    assert.deepEqual(candidatePaths('bash', { command }), [`${target}/`], command);
+  }
+});
+
+test('a patch body names the files it adds', () => {
+  assert.deepEqual(candidatePaths('apply_patch', { patch: '*** Add File: /tmp/zzz/f.md\n+x' }), [
+    '/tmp/zzz/f.md',
+  ]);
+});
+
+test('shell expansions and devices are not resolved as paths', () => {
+  assert.deepEqual(candidatePaths('bash', { command: 'echo x > $HOME/file' }), []);
+  assert.deepEqual(candidatePaths('bash', { command: 'echo x > /dev/null' }), []);
+  assert.deepEqual(candidatePaths('bash', { command: 'echo x > 2>&1' }), []);
 });
