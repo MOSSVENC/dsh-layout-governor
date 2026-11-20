@@ -13,7 +13,6 @@ import { after, test } from 'node:test';
 
 import { audit, buildFixPlan } from '../lib/engine/index.js';
 import { applyAutoActions, selectAutoActions } from '../lib/host/autofix.js';
-import { openIndex } from '../lib/engine/store.js';
 
 const created = [];
 
@@ -165,16 +164,6 @@ test('B3: the tool value carries the evidence of partiality', async () => {
   assert.equal(typeof value.stats.unreadable, 'number');
   assert.ok(auditTool.output.schema.required.includes('stats'));
   assert.equal(createAuditTool.length >= 0, true);
-});
-
-test('B4: the index waits instead of failing on a locked database', async () => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'lg-b4-'));
-  created.push(dir);
-  const file = path.join(dir, 'x.db');
-  const db = openIndex(file);
-  const timeout = db.prepare('PRAGMA busy_timeout').get();
-  assert.ok(Object.values(timeout)[0] >= 1000, 'a busy timeout is configured');
-  db.close();
 });
 
 test('B5: a reload disposes the route and the watcher, not only the tools', async () => {

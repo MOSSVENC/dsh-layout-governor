@@ -1,5 +1,11 @@
 # dsh-layout-governor
 
+> **This is a fixture, not an index.** It writes nothing into the tree it audits —
+> no database, no cache file. Code intelligence belongs to the upstream
+> `@colbymchenry/codegraph`, which keeps its own database and knows 20+ languages;
+> this plugin only holds the *rules* for where files may live and the *gate* that
+> refuses new top-level entries before they are created.
+
 A [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) plugin that audits a **directory tree against a policy file** and reports what drifted — duplicate payloads, backups outside the archive root, unregistered large files, documentation that no longer matches the disk, and version families nobody cleaned up.
 
 It is **read-only by design**. It never moves, deletes, renames, or writes a file in the tree it audits. It reports findings, and it generates a fix plan *as text* for a human to review.

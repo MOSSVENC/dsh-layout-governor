@@ -11,6 +11,7 @@ version: 1
 ignore:
   - "**/node_modules/**"
   - "**/.git/**"
+  - "**/.codegraph-wsl/**"
 
 # How bytes are bucketed in the composition panel.
 classification:
@@ -80,6 +81,13 @@ rules:
       # governor finds them without configuration; they belong to the map.
       - layout.policy.yml
       - layout.registry.yml
+      # Tooling indexes: ours and upstream codegraph's. They are artifacts of a
+      # tool that describes this tree, not a category of it.
+      - .layout-index.db
+      - .codegraph
+      # Upstream codegraph names its index per platform; on WSL it is
+      # `.codegraph-wsl`, so both spellings are declared.
+      - .codegraph-wsl
     allowPatterns:
       - "*.lock"
     ignore: []

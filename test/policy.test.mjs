@@ -149,7 +149,11 @@ test('layout.policy.yml resolves into seven enabled rule configs', async () => {
   const notPresent = resolveRuleConfigs(loaded.doc, RULES, { policyPresent: false });
   assert.ok([...notPresent.values()].every((config) => config.enabled === false));
 
-  assert.deepEqual(resolveIgnore(loaded.doc), ['**/node_modules/**', '**/.git/**']);
+  assert.deepEqual(resolveIgnore(loaded.doc), [
+    '**/node_modules/**',
+    '**/.git/**',
+    '**/.codegraph-wsl/**',
+  ]);
   assert.equal(resolveClassification(loaded.doc).regenerable.length, 5);
 });
 
