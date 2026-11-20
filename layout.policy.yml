@@ -21,7 +21,14 @@ classification:
     - "**/iso_tree/**"
     - "**/_scratch/**"
     - "_tools/py312/**"
+  # Irreplaceable, or not ours to move: tool indexes are protected the same way a
+  # master file is. An archive step that "tidies up" another tool's database is a
+  # data loss, not a tidy tree.
   protected:
+    - "**/.codegraph*/**"
+    - "**/.codegraph-wsl/**"
+    - "**/codegraph.db"
+    - "**/.layout-index.db*"
     - "writings/writer/**"
     - "**/U218*"
     - "**/7705047215923976320*"
@@ -170,6 +177,12 @@ rules:
     enabled: true
     severity: warn
     patterns:
+      # Another tool's index is not workspace content: never move it, never
+      # report it as a stray, and never let the archiver touch it.
+      - "**/.codegraph*/**"
+      - "**/.codegraph-wsl/**"
+      - "**/codegraph.db"
+      - "**/.layout-index.db*"
       - "writings/writer/**"
       - "**/U218*"
       - "**/7705047215923976320*"

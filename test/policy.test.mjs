@@ -111,6 +111,12 @@ test('layout.policy.yml parses and declares the studio workspace', async () => {
   assert.deepEqual(policy.rules.families.ignore, ['_projects/**/upstream/**', '_references/**']);
 
   assert.deepEqual(policy.rules.protected.patterns, [
+    // Tool indexes are protected: an archive step that moved another tool's
+    // database would be data loss, not tidying.
+    '**/.codegraph*/**',
+    '**/.codegraph-wsl/**',
+    '**/codegraph.db',
+    '**/.layout-index.db*',
     'writings/writer/**',
     '**/U218*',
     '**/7705047215923976320*',
