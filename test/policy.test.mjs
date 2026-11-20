@@ -155,11 +155,9 @@ test('layout.policy.yml resolves into seven enabled rule configs', async () => {
   const notPresent = resolveRuleConfigs(loaded.doc, RULES, { policyPresent: false });
   assert.ok([...notPresent.values()].every((config) => config.enabled === false));
 
-  assert.deepEqual(resolveIgnore(loaded.doc), [
-    '**/node_modules/**',
-    '**/.git/**',
-    '**/.codegraph-wsl/**',
-  ]);
+  // A path this policy *protects* must not also be globally ignored: the walk has to
+  // see it for the protected rule to be able to say whether the file is there.
+  assert.deepEqual(resolveIgnore(loaded.doc), ['**/node_modules/**', '**/.git/**']);
   assert.equal(resolveClassification(loaded.doc).regenerable.length, 5);
 });
 

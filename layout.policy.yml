@@ -11,7 +11,6 @@ version: 1
 ignore:
   - "**/node_modules/**"
   - "**/.git/**"
-  - "**/.codegraph-wsl/**"
 
 # How bytes are bucketed in the composition panel.
 classification:

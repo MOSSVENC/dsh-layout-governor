@@ -367,3 +367,41 @@ test('X: the same policy does move a directory with nothing protected inside', a
     'an unprotected unknown directory is still a candidate',
   );
 });
+
+test('BUG1/BUG6: a rule that ran on a truncated walk says so and counts what it saw', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'lg-cov-'));
+  created.push(dir);
+  const root = path.join(dir, 'tree');
+  await mkdir(path.join(root, 'a'), { recursive: true });
+  for (let index = 0; index < 8; index += 1) {
+    await writeFile(path.join(root, 'a', `f${index}.bin`), Buffer.alloc(1024 * 120, index));
+  }
+  await writeFile(path.join(root, 'layout.policy.yml'), 'version: 1\nrules:\n  duplicates:\n    enabled: true\n    minBytes: 1024\n    maxCopies: 1\n');
+
+  const bounded = await audit({ root, limits: { maxEntries: 4 } });
+  const duplicates = bounded.rules.find((rule) => rule.id === 'duplicates');
+  assert.equal(duplicates.truncated, true, 'the rule is marked as cut short');
+  assert.equal(typeof duplicates.coverage.candidates, 'number');
+  assert.equal(bounded.stats.truncatedReason, 'entries', 'and the reason is named');
+});
+
+test('BUG4: a top-level file is never offered to the archive', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'lg-top-'));
+  created.push(dir);
+  const root = path.join(dir, 'tree');
+  await mkdir(root, { recursive: true });
+  await writeFile(path.join(root, 'PENDING.md'), 'live todo list');
+  await writeFile(
+    path.join(root, 'layout.policy.yml'),
+    'version: 1\nrules:\n  top-level:\n    enabled: true\n    allow: [layout.policy.yml]\n',
+  );
+
+  const report = await audit({ root });
+  const actions = buildFixPlan(report).actions;
+  const forFile = actions.filter((action) => action.paths.includes(path.join(root, 'PENDING.md')));
+  assert.ok(forFile.length > 0, 'the file is reported');
+  assert.ok(
+    forFile.every((action) => action.kind !== 'move-to-archive'),
+    `a live file must not be archived: ${forFile.map((action) => action.kind).join(', ')}`,
+  );
+});
